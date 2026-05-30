@@ -554,6 +554,43 @@ export default function Page() {
 
   // Check active session on mount
   useEffect(() => {
+    // Parse error query parameters or hash from Supabase redirects
+    const parseUrlErrors = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        let error = searchParams.get("error");
+        let errorCode = searchParams.get("error_code");
+        let errorDescription = searchParams.get("error_description");
+
+        // If not found in search/query params, try parsing hash
+        if (!error && window.location.hash) {
+          const hashString = window.location.hash.substring(1); // remove '#'
+          const hashParams = new URLSearchParams(hashString);
+          error = hashParams.get("error");
+          errorCode = hashParams.get("error_code");
+          errorDescription = hashParams.get("error_description");
+        }
+
+        if (error || errorCode || errorDescription) {
+          const readableError = errorDescription 
+            ? decodeURIComponent(errorDescription).replace(/\+/g, " ") 
+            : `${error || "Auth Error"}: ${errorCode || "unknown_error"}`;
+          
+          setAuthError(readableError);
+          setAuthMode("login");
+          setShowAuthModal(true);
+
+          // Clean up the URL to keep it pristine and avoid annoying re-alerts
+          const cleanUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, cleanUrl);
+        }
+      } catch (err) {
+        console.error("Error parsing URL auth error parameters:", err);
+      }
+    };
+
+    parseUrlErrors();
+
     async function checkUser() {
       try {
         const u = await getSessionUser();
