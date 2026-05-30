@@ -1437,6 +1437,50 @@ export default function Page() {
             </a>
           </div>
 
+          {/* Active Profile README Block (Landing View) */}
+          {profileReadme ? (
+            <div className="w-full max-w-2xl mt-12 text-left animate-fade-in">
+              <div className="glass-panel p-6 rounded-sm relative overflow-hidden flex flex-col shadow-lg border border-white/[0.04] space-y-4 text-left">
+                <div className="flex justify-between items-center border-b border-white/[0.05] pb-3">
+                  <span className="font-mono text-[10px] text-text-muted tracking-widest uppercase flex items-center gap-2">
+                    <BookOpen size={12} className="text-growth animate-pulse" />
+                    {profileUsername || (user ? user.email?.split('@')[0] : "guest")} / README.md
+                  </span>
+                  <button
+                    onClick={() => openProfileModal("readme")}
+                    className="font-mono text-[9px] text-text-muted hover:text-growth transition-colors flex items-center gap-1 hover:scale-105 transform duration-200"
+                  >
+                    <Edit2 size={10} />
+                    [ EDIT ]
+                  </button>
+                </div>
+                <div className="prose prose-invert max-w-none text-xs leading-relaxed text-text-secondary font-sans markdown-content">
+                  <MarkdownRenderer content={profileReadme} />
+                </div>
+              </div>
+            </div>
+          ) : (
+            user && (
+              <div className="w-full max-w-2xl mt-12 text-left animate-fade-in">
+                <div className="glass-panel p-5 rounded-sm relative overflow-hidden flex items-center justify-between shadow-md border border-dashed border-white/10 hover:border-growth/30 transition-all duration-300 group">
+                  <div className="flex items-center space-x-3 text-left">
+                    <BookOpen size={16} className="text-text-muted group-hover:text-growth transition-colors" />
+                    <div>
+                      <p className="font-mono text-[10px] text-text-primary uppercase tracking-wider font-bold">Discover the README profile feature</p>
+                      <p className="text-[10px] text-text-secondary font-light font-sans mt-0.5">Create a premium GitHub-style markdown bio to showcase on your landing workspace.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => openProfileModal("readme")}
+                    className="font-mono text-[10px] text-text-muted hover:text-growth transition-colors shrink-0 px-3 py-1.5 bg-white/5 hover:bg-growth/15 rounded-xs border border-white/5 hover:border-growth/20"
+                  >
+                    [ INITIALIZE ]
+                  </button>
+                </div>
+              </div>
+            )
+          )}
+
           {/* Decorative Specs Grid */}
           <div className="mt-20 grid grid-cols-2 md:grid-cols-4 gap-4 w-full border-t border-white/[0.04] pt-8 font-mono text-left">
             <div className="p-4 rounded-xs bg-memory-surface/10 border border-white/[0.02]">
