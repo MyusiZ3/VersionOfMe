@@ -1,0 +1,164 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --background: #0E1117;
+    --foreground: #F5F5F3;
+    
+    --color-deep-archive: #0E1117;
+    --color-memory-surface: #171B22;
+    --color-elevated-surface: #212734;
+
+    --color-text-primary: #F5F5F3;
+    --color-text-secondary: #B8BDC7;
+    --color-text-muted: #7A828F;
+    --color-text-disabled: #5B6270;
+
+    --color-growth: #6FAF7B;
+    --color-memory-gold: #D8B46A;
+    --color-reflection-blue: #7FA7D8;
+    --color-connection-purple: #A78BD9;
+    --color-loss-crimson: #B96A6A;
+  }
+
+  body {
+    background-color: var(--color-deep-archive);
+    color: var(--color-text-primary);
+    font-family: var(--font-plus-jakarta-sans), sans-serif;
+    overflow-x: hidden;
+  }
+
+  /* Custom Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--color-deep-archive);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-elevated-surface);
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-disabled);
+  }
+}
+
+@theme {
+  --color-deep-archive: var(--color-deep-archive);
+  --color-memory-surface: var(--color-memory-surface);
+  --color-elevated-surface: var(--color-elevated-surface);
+
+  --color-text-primary: var(--color-text-primary);
+  --color-text-secondary: var(--color-text-secondary);
+  --color-text-muted: var(--color-text-muted);
+  --color-text-disabled: var(--color-text-disabled);
+
+  --color-growth: var(--color-growth);
+  --color-memory-gold: var(--color-memory-gold);
+  --color-reflection-blue: var(--color-reflection-blue);
+  --color-connection-purple: var(--color-connection-purple);
+  --color-loss-crimson: var(--color-loss-crimson);
+
+  --font-serif: var(--font-instrument-serif), serif;
+  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), monospace;
+
+  --radius-xs: 8px;
+  --radius-sm: 16px;
+  --radius-md: 20px;
+  --radius-lg: 24px;
+}
+
+/* Glassmorphism Helper Classes */
+.glass-panel {
+  background: rgba(23, 27, 34, 0.65);
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.glass-panel-elevated {
+  background: rgba(33, 39, 52, 0.75);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-card {
+  background: rgba(23, 27, 34, 0.4);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-card:hover {
+  background: rgba(33, 39, 52, 0.6);
+  border-color: rgba(255, 255, 255, 0.08);
+  transform: translateY(-2px);
+}
+
+.glow-btn {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glow-btn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(120deg, transparent, rgba(255,255,255,0.06), transparent);
+  transform: translateX(-100%);
+  transition: 0.6s;
+}
+
+.glow-btn:hover::before {
+  transform: translateX(100%);
+}
+
+/* Aura orb ambient pulse animations */
+@keyframes orbFloat {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+@keyframes orbMorph {
+  0%, 100% { border-radius: 42% 58% 70% 30% / 45% 45% 55% 55%; }
+  33% { border-radius: 70% 30% 52% 48% / 60% 40% 60% 40%; }
+  66% { border-radius: 30% 70% 40% 60% / 50% 60% 40% 50%; }
+}
+
+.aura-orb-base {
+  filter: blur(80px);
+  mix-blend-mode: screen;
+  animation: orbFloat 20s infinite ease-in-out, orbMorph 15s infinite ease-in-out;
+  opacity: 0.45;
+}
+
+/* Typing Editor Styles */
+.editor-paper {
+  background: radial-gradient(circle at top left, rgba(23, 27, 34, 0.7), rgba(14, 17, 23, 0.9));
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.commit-timeline-line {
+  background: linear-gradient(to bottom, rgba(167, 139, 217, 0.2), rgba(111, 175, 123, 0.2), rgba(216, 180, 106, 0.2));
+}
+
+/* Custom Text Mask */
+.text-gradient-gold {
+  background: linear-gradient(135deg, #FFF 0%, #D8B46A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.text-gradient-purple {
+  background: linear-gradient(135deg, #FFF 0%, #A78BD9 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}

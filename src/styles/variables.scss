@@ -1,0 +1,31 @@
+// Brand Personality & Color Tokens
+$color-deep-archive: #0E1117;
+$color-memory-surface: #171B22;
+$color-elevated-surface: #212734;
+
+// Text Colors
+$color-text-primary: #F5F5F3;
+$color-text-secondary: #B8BDC7;
+$color-text-muted: #7A828F;
+$color-text-disabled: #5B6270;
+
+// Accents (Moods / Categories)
+$color-growth: #6FAF7B;
+$color-memory-gold: #D8B46A;
+$color-reflection-blue: #7FA7D8;
+$color-connection-purple: #A78BD9;
+$color-loss-crimson: #B96A6A;
+
+// Border Radii
+$radius-xs: 8px;
+$radius-sm: 16px;
+$radius-md: 20px;
+$radius-lg: 24px;
+
+// Shadows
+$shadow-atmospheric: 0px 4px 24px rgba(0, 0, 0, 0.25);
+
+// Typography
+$font-headings: 'Instrument Serif', serif;
+$font-body: 'Plus Jakarta Sans', sans-serif;
+$font-system: 'IBM Plex Mono', monospace;
