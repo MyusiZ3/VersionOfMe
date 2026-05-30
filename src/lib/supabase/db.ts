@@ -316,7 +316,23 @@ export async function fetchProfile(userId: string) {
   return data;
 }
 
-export async function updateProfile(userId: string, profile: { display_name?: string; avatar_url?: string; username?: string }) {
+export async function updateProfile(
+  userId: string,
+  profile: {
+    display_name?: string;
+    avatar_url?: string;
+    username?: string;
+    bio?: string;
+    pronouns?: string;
+    location?: string;
+    website_url?: string;
+    social_links?: {
+      linkedin?: string;
+      instagram?: string;
+      [key: string]: any;
+    };
+  }
+) {
   const { data, error } = await supabase
     .from('profiles')
     .update(profile)
@@ -325,7 +341,6 @@ export async function updateProfile(userId: string, profile: { display_name?: st
     .single();
 
   if (error) {
-    console.error('Error updating profile:', error.message);
     throw error;
   }
   return data;

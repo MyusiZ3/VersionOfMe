@@ -735,8 +735,8 @@ export default function Page() {
             social_links: {
               linkedin: tempLinkedin,
               instagram: tempInstagram
-            } as any
-          } as any);
+            }
+          });
         } catch (dbErr: any) {
           console.warn("Extended profiles update failed, falling back to core columns:", dbErr);
           // Fallback update to standard columns which exist
