@@ -16,6 +16,12 @@ create table if not exists public.profiles (
     username varchar(50) unique not null,
     display_name varchar(100),
     avatar_url text,
+    bio text,
+    pronouns varchar(50),
+    location varchar(100),
+    website_url text,
+    readme text,
+    social_links jsonb default '{}'::jsonb,
     created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 

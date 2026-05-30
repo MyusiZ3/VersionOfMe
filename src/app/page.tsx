@@ -15,9 +15,12 @@ import {
   unlockAchievement,
   fetchProfile,
   updateProfile,
-  uploadAvatarFile
+  uploadAvatarFile,
+  updateCommit,
+  deleteCommit
 } from "@/lib/supabase/db";
 import { createClient } from "@/lib/supabase/client";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
 import { 
   GitCommit, 
   Calendar, 
@@ -441,6 +444,7 @@ export default function Page() {
   const [profileWebsiteUrl, setProfileWebsiteUrl] = useState("https://creative-portfolio-theta-rosy.vercel.app/");
   const [profileLinkedin, setProfileLinkedin] = useState("muhamad-sidik-a6757b25b");
   const [profileInstagram, setProfileInstagram] = useState("imyusi_");
+  const [profileReadme, setProfileReadme] = useState<string>("");
 
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [tempDisplayName, setTempDisplayName] = useState("");
@@ -452,10 +456,22 @@ export default function Page() {
   const [tempWebsiteUrl, setTempWebsiteUrl] = useState("");
   const [tempLinkedin, setTempLinkedin] = useState("");
   const [tempInstagram, setTempInstagram] = useState("");
+  const [tempReadme, setTempReadme] = useState<string>("");
+  
+  const [profileModalTab, setProfileModalTab] = useState<"general" | "readme">("general");
+  const [readmePreviewMode, setReadmePreviewMode] = useState(false);
   
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
   const [profileSuccess, setProfileSuccess] = useState("");
+
+  // Commit editing states
+  const [editingCommitId, setEditingCommitId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDesc, setEditDesc] = useState("");
+  const [editMood, setEditMood] = useState<number>(3);
+  const [editTags, setEditTags] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
 
   // Function to load all user data from Supabase
   const loadUserData = async (userId: string) => {
@@ -516,6 +532,7 @@ export default function Page() {
           if (dbProfile.pronouns) setProfilePronouns(dbProfile.pronouns);
           if (dbProfile.location) setProfileLocation(dbProfile.location);
           if (dbProfile.website_url) setProfileWebsiteUrl(dbProfile.website_url);
+          if (dbProfile.readme) setProfileReadme(dbProfile.readme);
           
           if (dbProfile.social_links) {
             const socials = typeof dbProfile.social_links === 'string'
@@ -554,6 +571,7 @@ export default function Page() {
           const localWebsite = localStorage.getItem("vom_guest_website");
           const localLinkedin = localStorage.getItem("vom_guest_linkedin");
           const localInstagram = localStorage.getItem("vom_guest_instagram");
+          const localReadme = localStorage.getItem("vom_guest_readme");
 
           if (localName) setDisplayName(localName);
           if (localAvatar) setAvatarUrl(localAvatar);
@@ -564,6 +582,7 @@ export default function Page() {
           if (localWebsite) setProfileWebsiteUrl(localWebsite);
           if (localLinkedin) setProfileLinkedin(localLinkedin);
           if (localInstagram) setProfileInstagram(localInstagram);
+          if (localReadme) setProfileReadme(localReadme);
         }
       } catch (err) {
         console.error("Auth check failed:", err);
@@ -641,6 +660,7 @@ export default function Page() {
     const localWebsite = localStorage.getItem("vom_guest_website") || "https://creative-portfolio-theta-rosy.vercel.app/";
     const localLinkedin = localStorage.getItem("vom_guest_linkedin") || "muhamad-sidik-a6757b25b";
     const localInstagram = localStorage.getItem("vom_guest_instagram") || "imyusi_";
+    const localReadme = localStorage.getItem("vom_guest_readme") || "";
 
     setDisplayName(localName);
     setAvatarUrl(localAvatar);
@@ -651,12 +671,13 @@ export default function Page() {
     setProfileWebsiteUrl(localWebsite);
     setProfileLinkedin(localLinkedin);
     setProfileInstagram(localInstagram);
+    setProfileReadme(localReadme);
 
     setViewMode("landing");
   };
 
   // Profile Customizer Actions
-  const openProfileModal = () => {
+  const openProfileModal = (tab: "general" | "readme" = "general") => {
     setTempDisplayName(displayName);
     setTempUsername(profileUsername);
     setTempAvatarUrl(avatarUrl || "");
@@ -666,6 +687,9 @@ export default function Page() {
     setTempWebsiteUrl(profileWebsiteUrl);
     setTempLinkedin(profileLinkedin);
     setTempInstagram(profileInstagram);
+    setTempReadme(profileReadme);
+    setProfileModalTab(tab);
+    setReadmePreviewMode(false);
     
     setProfileError("");
     setProfileSuccess("");
@@ -732,6 +756,7 @@ export default function Page() {
             pronouns: tempPronouns,
             location: tempLocation,
             website_url: tempWebsiteUrl,
+            readme: tempReadme,
             social_links: {
               linkedin: tempLinkedin,
               instagram: tempInstagram
@@ -758,6 +783,7 @@ export default function Page() {
         localStorage.setItem("vom_guest_website", tempWebsiteUrl);
         localStorage.setItem("vom_guest_linkedin", tempLinkedin);
         localStorage.setItem("vom_guest_instagram", tempInstagram);
+        localStorage.setItem("vom_guest_readme", tempReadme);
       }
 
       // Update local states in real time
@@ -770,6 +796,7 @@ export default function Page() {
       setProfileWebsiteUrl(tempWebsiteUrl);
       setProfileLinkedin(tempLinkedin);
       setProfileInstagram(tempInstagram);
+      setProfileReadme(tempReadme);
 
       if (!profileSuccess.includes("locally")) {
         setProfileSuccess("Core identity synchronized successfully.");
@@ -1046,6 +1073,86 @@ export default function Page() {
     setActiveTab("log");
   };
 
+  // Start editing commit
+  const startEditCommit = (commit: any) => {
+    setEditingCommitId(commit.id);
+    setEditTitle(commit.title);
+    setEditDesc(commit.description);
+    setEditMood(commit.mood_level);
+    setEditTags(commit.emotional_tags ? commit.emotional_tags.join(", ") : "");
+  };
+
+  // Save edited commit
+  const handleSaveCommit = async (commitId: string) => {
+    setEditSaving(true);
+    const tagsArray = editTags
+      .split(",")
+      .map(tag => tag.trim().toLowerCase())
+      .filter(tag => tag.length > 0);
+
+    try {
+      if (user) {
+        await updateCommit(user.id, commitId, {
+          title: editTitle,
+          description: editDesc,
+          mood_level: editMood,
+          emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"]
+        });
+      }
+
+      // Update state in real-time
+      setCommits(prev =>
+        prev.map(c =>
+          c.id === commitId
+            ? {
+                ...c,
+                title: editTitle,
+                description: editDesc,
+                mood_level: editMood,
+                emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"]
+              }
+            : c
+        )
+      );
+
+      // Play enter synth sound
+      if (soundEnabled && synthRef.current) {
+        synthRef.current.playClick("enter");
+      }
+
+      setEditingCommitId(null);
+    } catch (err) {
+      console.error("Failed to update commit:", err);
+      alert("Failed to update commit. Please try again.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  // Delete commit
+  const handleDeleteCommit = async (commitId: string) => {
+    if (!confirm("Are you sure you want to delete this commit from your timeline? This action is permanent.")) {
+      return;
+    }
+
+    try {
+      if (user) {
+        await deleteCommit(user.id, commitId);
+      }
+
+      // Update state
+      setCommits(prev => prev.filter(c => c.id !== commitId));
+
+      // Play delete/loss sound
+      if (soundEnabled && synthRef.current) {
+        synthRef.current.playClick("backspace");
+      }
+    } catch (err) {
+      console.error("Failed to delete commit:", err);
+      alert("Failed to delete commit. Please try again.");
+    }
+  };
+
   // Submit new relationship
   const handleRelationshipSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1235,7 +1342,7 @@ export default function Page() {
 
           {/* Real-time profile identity indicator */}
           <div 
-            onClick={openProfileModal} 
+            onClick={() => openProfileModal()} 
             className="flex items-center space-x-2 border-l border-white/5 pl-4 cursor-pointer hover:opacity-80 transition-opacity"
             title="Configure Profile"
           >
@@ -1448,7 +1555,7 @@ export default function Page() {
                   [ SECURE_IDENTITY_CARD ]
                 </span>
                 <button 
-                  onClick={openProfileModal}
+                  onClick={() => openProfileModal()}
                   className="text-text-muted hover:text-text-primary transition-all p-1 hover:bg-white/5 rounded-xs flex items-center space-x-1.5"
                   title="Customize Identity"
                 >
@@ -1459,7 +1566,7 @@ export default function Page() {
 
               {/* Avatar & User Core Meta */}
               <div className="flex items-center space-x-4">
-                <div className="relative group cursor-pointer shrink-0" onClick={openProfileModal}>
+                <div className="relative group cursor-pointer shrink-0" onClick={() => openProfileModal()}>
                   {/* Glow Backdrop */}
                   <div className="absolute inset-0 bg-growth/20 rounded-xs filter blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                   {/* Actual Avatar */}
@@ -1753,6 +1860,44 @@ export default function Page() {
                     </span>
                   </div>
 
+                  {/* Premium Profile README Block (GitHub Style) */}
+                  {profileReadme ? (
+                    <div className="glass-panel p-6 rounded-sm relative overflow-hidden flex flex-col shadow-lg border border-white/[0.04] space-y-4 text-left">
+                      <div className="flex justify-between items-center border-b border-white/[0.05] pb-3">
+                        <span className="font-mono text-[10px] text-text-muted tracking-widest uppercase flex items-center gap-2">
+                          <BookOpen size={12} className="text-growth animate-pulse" />
+                          {profileUsername || "guest"} / README.md
+                        </span>
+                        <button
+                          onClick={() => openProfileModal("readme")}
+                          className="font-mono text-[9px] text-text-muted hover:text-growth transition-colors flex items-center gap-1 hover:scale-105 transform duration-200"
+                        >
+                          <Edit2 size={10} />
+                          [ EDIT ]
+                        </button>
+                      </div>
+                      <div className="prose prose-invert max-w-none text-xs leading-relaxed text-text-secondary font-sans markdown-content">
+                        <MarkdownRenderer content={profileReadme} />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="glass-panel p-5 rounded-sm relative overflow-hidden flex items-center justify-between shadow-md border border-dashed border-white/10 hover:border-growth/30 transition-all duration-300 group">
+                      <div className="flex items-center space-x-3 text-left">
+                        <BookOpen size={16} className="text-text-muted group-hover:text-growth transition-colors" />
+                        <div>
+                          <p className="font-mono text-[10px] text-text-primary uppercase tracking-wider font-bold">Discover the README profile feature</p>
+                          <p className="text-[10px] text-text-secondary font-light font-sans mt-0.5">Create a premium GitHub-style markdown bio to showcase on your workspace profile dashboard.</p>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => openProfileModal("readme")}
+                        className="font-mono text-[10px] text-text-muted hover:text-growth transition-colors shrink-0 px-3 py-1.5 bg-white/5 hover:bg-growth/15 rounded-xs border border-white/5 hover:border-growth/20"
+                      >
+                        [ INITIALIZE ]
+                      </button>
+                    </div>
+                  )}
+
                   {/* Commits Git List */}
                   <div className="relative pl-6 space-y-6">
                     {/* The continuous vertical connector line */}
@@ -1779,47 +1924,158 @@ export default function Page() {
                           <div className={`absolute -left-[24px] top-1.5 w-3 h-3 rounded-full border border-deep-archive transition-all duration-300 bg-elevated-surface group-hover:scale-125 group-hover:bg-growth`} />
 
                           {/* Commit Card */}
-                          <div className="glass-card p-5 rounded-sm shadow-md flex flex-col space-y-3">
-                            <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2">
-                              <div className="space-y-1">
-                                <span className="font-mono text-[10px] text-text-disabled mr-2">
-                                  commit <span className="text-growth/80">{c.hash}</span>
-                                </span>
-                                <h3 className="font-serif text-lg text-text-primary capitalize leading-tight">
-                                  {c.title}
-                                </h3>
+                          <div className="glass-card p-5 rounded-sm shadow-md flex flex-col space-y-3 relative overflow-hidden">
+                            {editingCommitId === c.id ? (
+                              <div className="space-y-4 text-left font-mono text-xs pt-1">
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-text-muted uppercase tracking-wider block">Title</label>
+                                  <input
+                                    type="text"
+                                    value={editTitle}
+                                    onChange={(e) => setEditTitle(e.target.value)}
+                                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-1.5 focus:border-growth focus:outline-none text-text-primary text-xs"
+                                  />
+                                </div>
+
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-text-muted uppercase tracking-wider block">Description</label>
+                                  <textarea
+                                    rows={3}
+                                    value={editDesc}
+                                    onChange={(e) => setEditDesc(e.target.value)}
+                                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-1.5 focus:border-growth focus:outline-none text-text-primary text-xs font-sans font-light resize-none leading-relaxed"
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[9px] text-text-muted uppercase tracking-wider block">Mood Impact</label>
+                                    <div className="flex space-x-1">
+                                      {[1, 2, 3, 4, 5].map((level) => {
+                                        const moods = ["Heavy", "Somber", "Balanced", "Peaceful", "Elated"];
+                                        const isActive = editMood === level;
+                                        return (
+                                          <button
+                                            key={level}
+                                            type="button"
+                                            onClick={() => setEditMood(level)}
+                                            title={moods[level - 1]}
+                                            className={`w-7 h-7 rounded-xs border flex items-center justify-center font-bold text-xs transition-all ${
+                                              isActive
+                                                ? "bg-growth/20 border-growth text-growth scale-105"
+                                                : "bg-deep-archive border-white/5 text-text-muted hover:text-text-primary"
+                                            }`}
+                                          >
+                                            {level}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] text-text-muted uppercase tracking-wider block">Emotional Tags (comma separated)</label>
+                                    <input
+                                      type="text"
+                                      value={editTags}
+                                      onChange={(e) => setEditTags(e.target.value)}
+                                      placeholder="e.g. routine, victory, stress"
+                                      className="w-full bg-deep-archive border border-white/10 rounded-xs px-3 py-1.5 focus:border-growth focus:outline-none text-text-primary text-xs"
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="flex justify-end space-x-2 pt-2 border-t border-white/[0.03]">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingCommitId(null)}
+                                    className="px-3 py-1.5 text-text-muted hover:text-text-primary transition-colors text-[10px] uppercase font-bold"
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSaveCommit(c.id)}
+                                    disabled={editSaving}
+                                    className="px-4 py-1.5 bg-growth text-deep-archive rounded-xs font-bold text-[10px] uppercase hover:bg-growth-hover transition-colors disabled:opacity-50 flex items-center"
+                                  >
+                                    {editSaving ? "Saving..." : "Save Commit"}
+                                  </button>
+                                </div>
                               </div>
+                            ) : (
+                              <>
+                                <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-2">
+                                  <div className="space-y-1 text-left">
+                                    <span className="font-mono text-[10px] text-text-disabled mr-2">
+                                      commit <span className="text-growth/80">{c.hash}</span>
+                                    </span>
+                                    <h3 className="font-serif text-lg text-text-primary capitalize leading-tight">
+                                      {c.title}
+                                    </h3>
+                                  </div>
 
-                              <div className="flex items-center space-x-2">
-                                <span className={`font-mono text-[9px] border px-2 py-0.5 rounded-xs ${moodMap.bg} ${moodMap.border} ${moodMap.text}`}>
-                                  {moodMap.label}
-                                </span>
-                                <span className="font-mono text-[9px] text-text-disabled">
-                                  {new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                </span>
-                              </div>
-                            </div>
+                                  <div className="flex items-center space-x-3 shrink-0">
+                                    <span className={`font-mono text-[9px] border px-2 py-0.5 rounded-xs ${moodMap.bg} ${moodMap.border} ${moodMap.text}`}>
+                                      {moodMap.label}
+                                    </span>
+                                    <span className="font-mono text-[9px] text-text-disabled">
+                                      {new Date(c.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                    </span>
+                                    
+                                    {/* Action Buttons on Hover */}
+                                    <div className="flex items-center space-x-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                                      <button
+                                        onClick={() => startEditCommit(c)}
+                                        className="text-text-muted hover:text-growth transition-colors p-1"
+                                        title="Edit Commit"
+                                      >
+                                        <Edit2 size={10} />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteCommit(c.id)}
+                                        className="text-text-muted hover:text-loss-crimson transition-colors p-1"
+                                        title="Delete Commit"
+                                      >
+                                        <svg
+                                          viewBox="0 0 24 24"
+                                          fill="none"
+                                          stroke="currentColor"
+                                          strokeWidth="2"
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          className="w-3 h-3"
+                                        >
+                                          <polyline points="3 6 5 6 21 6" />
+                                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                        </svg>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
 
-                            <p className="text-text-secondary text-xs font-light leading-relaxed">
-                              {c.description}
-                            </p>
+                                <p className="text-text-secondary text-xs font-light leading-relaxed text-left">
+                                  {c.description}
+                                </p>
 
-                            <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.02]">
-                              {/* Tags */}
-                              <div className="flex flex-wrap gap-1.5">
-                                {c.emotional_tags.map(tag => (
-                                  <span key={tag} className="font-mono text-[9px] text-text-muted hover:text-text-primary transition-colors">
-                                    #{tag}
+                                <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-white/[0.02]">
+                                  {/* Tags */}
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {c.emotional_tags.map(tag => (
+                                      <span key={tag} className="font-mono text-[9px] text-text-muted hover:text-text-primary transition-colors">
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+
+                                  {/* XP rewards */}
+                                  <span className="font-mono text-[10px] text-growth flex items-center font-bold">
+                                    <Zap size={10} className="mr-1" />
+                                    +{c.xp} XP
                                   </span>
-                                ))}
-                              </div>
-
-                              {/* XP rewards */}
-                              <span className="font-mono text-[10px] text-growth flex items-center">
-                                <Zap size={10} className="mr-1" />
-                                +{c.xp} XP
-                              </span>
-                            </div>
+                                </div>
+                              </>
+                            )}
                           </div>
 
                         </div>
@@ -2385,161 +2641,251 @@ export default function Page() {
             </p>
 
             <form onSubmit={handleProfileSave} className="space-y-5 text-left">
-              {/* Avatar Upload Block */}
-              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/[0.01] border border-white/[0.03] p-4 rounded-xs">
-                <div className="relative group cursor-pointer shrink-0">
-                  <div className="absolute inset-0 bg-growth/20 rounded-xs filter blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                  <div className="relative w-20 h-20 rounded-xs border border-white/10 overflow-hidden bg-deep-archive/60 flex items-center justify-center">
-                    {tempAvatarUrl ? (
-                      <img src={tempAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="font-serif italic text-3xl text-gradient-gold">
-                        {tempDisplayName ? tempDisplayName.charAt(0) : "V"}
+              {/* Modal Tab Switcher */}
+              <div className="flex border-b border-white/5 mb-5 font-mono text-[10px] uppercase tracking-wider">
+                <button
+                  type="button"
+                  onClick={() => setProfileModalTab("general")}
+                  className={`pb-3 px-4 transition-all border-b-2 font-bold ${
+                    profileModalTab === "general"
+                      ? "border-growth text-growth"
+                      : "border-transparent text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  [ 01_general_settings ]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProfileModalTab("readme")}
+                  className={`pb-3 px-4 transition-all border-b-2 font-bold ${
+                    profileModalTab === "readme"
+                      ? "border-growth text-growth"
+                      : "border-transparent text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  [ 02_readme_profile ]
+                </button>
+              </div>
+
+              {profileModalTab === "general" && (
+                <>
+                  {/* Avatar Upload Block */}
+                  <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/[0.01] border border-white/[0.03] p-4 rounded-xs">
+                    <div className="relative group cursor-pointer shrink-0">
+                      <div className="absolute inset-0 bg-growth/20 rounded-xs filter blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="relative w-20 h-20 rounded-xs border border-white/10 overflow-hidden bg-deep-archive/60 flex items-center justify-center">
+                        {tempAvatarUrl ? (
+                          <img src={tempAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="font-serif italic text-3xl text-gradient-gold">
+                            {tempDisplayName ? tempDisplayName.charAt(0) : "V"}
+                          </span>
+                        )}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                          <Camera size={20} className="text-white animate-pulse" />
+                        </div>
+                      </div>
+                      <input 
+                        type="file" 
+                        accept="image/*"
+                        onChange={handleAvatarFileChange}
+                        className="absolute inset-0 opacity-0 cursor-pointer animate-pulse"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                      <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest block">
+                        Identity Portrait (Avatar)
                       </span>
-                    )}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
-                      <Camera size={20} className="text-white animate-pulse" />
+                      <p className="text-xs text-text-secondary font-light leading-relaxed font-sans">
+                        Click portrait to choose a new file. Recommended: square image, under 2MB.
+                      </p>
                     </div>
                   </div>
-                  <input 
-                    type="file" 
-                    accept="image/*"
-                    onChange={handleAvatarFileChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer animate-pulse"
-                  />
-                </div>
-                
-                <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
-                  <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest block">
-                    Identity Portrait (Avatar)
-                  </span>
-                  <p className="text-xs text-text-secondary font-light leading-relaxed font-sans">
-                    Click portrait to choose a new file. Recommended: square image, under 2MB.
-                  </p>
-                </div>
-              </div>
 
-              {/* Identity Form Fields */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
-                <div className="space-y-1">
-                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
-                    Display Name
-                  </label>
-                  <input 
-                    type="text"
-                    required
-                    value={tempDisplayName}
-                    onChange={(e) => setTempDisplayName(e.target.value)}
-                    placeholder="Muhamad Sidik"
-                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                  />
-                </div>
+                  {/* Identity Form Fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                        Display Name
+                      </label>
+                      <input 
+                        type="text"
+                        required
+                        value={tempDisplayName}
+                        onChange={(e) => setTempDisplayName(e.target.value)}
+                        placeholder="Muhamad Sidik"
+                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                      />
+                    </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
-                    Username / Handle
-                  </label>
-                  <div className="relative flex items-center">
-                    <span className="absolute left-3 text-text-muted">@</span>
-                    <input 
-                      type="text"
-                      required
-                      value={tempUsername}
-                      onChange={(e) => setTempUsername(e.target.value)}
-                      placeholder="myusiz3"
-                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs pl-8 pr-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                    />
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                        Username / Handle
+                      </label>
+                      <div className="relative flex items-center">
+                        <span className="absolute left-3 text-text-muted">@</span>
+                        <input 
+                          type="text"
+                          required
+                          value={tempUsername}
+                          onChange={(e) => setTempUsername(e.target.value)}
+                          placeholder="myusiz3"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs pl-8 pr-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                        Pronouns
+                      </label>
+                      <input 
+                        type="text"
+                        value={tempPronouns}
+                        onChange={(e) => setTempPronouns(e.target.value)}
+                        placeholder="e.g. he/him, she/her, they/them"
+                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                        Location
+                      </label>
+                      <input 
+                        type="text"
+                        value={tempLocation}
+                        onChange={(e) => setTempLocation(e.target.value)}
+                        placeholder="e.g. Bandung, Indonesia"
+                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
-                    Pronouns
-                  </label>
-                  <input 
-                    type="text"
-                    value={tempPronouns}
-                    onChange={(e) => setTempPronouns(e.target.value)}
-                    placeholder="e.g. he/him, she/her, they/them"
-                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
-                    Location
-                  </label>
-                  <input 
-                    type="text"
-                    value={tempLocation}
-                    onChange={(e) => setTempLocation(e.target.value)}
-                    placeholder="e.g. Bandung, Indonesia"
-                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                  />
-                </div>
-              </div>
-
-              {/* Bio Field */}
-              <div className="space-y-1 font-mono text-xs">
-                <label className="text-[10px] text-text-muted uppercase tracking-widest block">
-                  Bio / Status Message
-                </label>
-                <textarea
-                  rows={2}
-                  value={tempBio}
-                  onChange={(e) => setTempBio(e.target.value)}
-                  placeholder="Tell us about yourself..."
-                  className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-sans resize-none text-sm font-light leading-relaxed"
-                />
-              </div>
-
-              {/* Social Links Block */}
-              <div className="border-t border-white/5 pt-4 space-y-3 font-mono text-xs">
-                <span className="text-[10px] text-text-muted uppercase tracking-widest block">
-                  Social Network Integrations
-                </span>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-text-secondary uppercase block">
-                      Website URL
+                  {/* Bio Field */}
+                  <div className="space-y-1 font-mono text-xs">
+                    <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                      Bio / Status Message
                     </label>
-                    <input 
-                      type="url"
-                      value={tempWebsiteUrl}
-                      onChange={(e) => setTempWebsiteUrl(e.target.value)}
-                      placeholder="https://yourpage.com"
-                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                    <textarea
+                      rows={2}
+                      value={tempBio}
+                      onChange={(e) => setTempBio(e.target.value)}
+                      placeholder="Tell us about yourself..."
+                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-sans resize-none text-sm font-light leading-relaxed"
                     />
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-text-secondary uppercase block">
-                      LinkedIn Username
-                    </label>
-                    <input 
-                      type="text"
-                      value={tempLinkedin}
-                      onChange={(e) => setTempLinkedin(e.target.value)}
-                      placeholder="linkedin-username"
-                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                    />
+                  {/* Social Links Block */}
+                  <div className="border-t border-white/5 pt-4 space-y-3 font-mono text-xs">
+                    <span className="text-[10px] text-text-muted uppercase tracking-widest block">
+                      Social Network Integrations
+                    </span>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[9px] text-text-secondary uppercase block">
+                          Website URL
+                        </label>
+                        <input 
+                          type="url"
+                          value={tempWebsiteUrl}
+                          onChange={(e) => setTempWebsiteUrl(e.target.value)}
+                          placeholder="https://yourpage.com"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] text-text-secondary uppercase block">
+                          LinkedIn Username
+                        </label>
+                        <input 
+                          type="text"
+                          value={tempLinkedin}
+                          onChange={(e) => setTempLinkedin(e.target.value)}
+                          placeholder="linkedin-username"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] text-text-secondary uppercase block">
+                          Instagram Handle
+                        </label>
+                        <input 
+                          type="text"
+                          value={tempInstagram}
+                          onChange={(e) => setTempInstagram(e.target.value)}
+                          placeholder="instagram_handle"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {profileModalTab === "readme" && (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-white/[0.01] border border-white/[0.03] px-4 py-2.5 rounded-xs">
+                    <span className="font-mono text-[10px] text-text-muted uppercase tracking-wider flex items-center gap-1.5">
+                      <BookOpen size={12} className="text-growth animate-pulse" />
+                      markdown readme profile
+                    </span>
+                    <div className="flex items-center space-x-2 font-mono text-[9px]">
+                      <button
+                        type="button"
+                        onClick={() => setReadmePreviewMode(false)}
+                        className={`px-2 py-1 rounded-xs transition-all ${
+                          !readmePreviewMode
+                            ? "bg-growth/15 text-growth border border-growth/20 font-bold"
+                            : "text-text-muted hover:text-text-primary border border-transparent"
+                        }`}
+                      >
+                        [ EDIT ]
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setReadmePreviewMode(true)}
+                        className={`px-2 py-1 rounded-xs transition-all ${
+                          readmePreviewMode
+                            ? "bg-growth/15 text-growth border border-growth/20 font-bold"
+                            : "text-text-muted hover:text-text-primary border border-transparent"
+                        }`}
+                      >
+                        [ PREVIEW ]
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="text-[9px] text-text-secondary uppercase block">
-                      Instagram Handle
-                    </label>
-                    <input 
-                      type="text"
-                      value={tempInstagram}
-                      onChange={(e) => setTempInstagram(e.target.value)}
-                      placeholder="instagram_handle"
-                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
-                    />
-                  </div>
+                  {readmePreviewMode ? (
+                    <div className="glass-panel p-5 rounded-xs border border-white/5 min-h-[220px] max-h-[350px] overflow-y-auto prose prose-invert text-xs leading-relaxed text-left text-text-secondary font-sans markdown-content">
+                      {tempReadme ? (
+                        <MarkdownRenderer content={tempReadme} />
+                      ) : (
+                        <span className="italic text-text-disabled">Nothing to preview. Go to the Edit tab to write your bio.</span>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <textarea
+                        rows={10}
+                        value={tempReadme}
+                        onChange={(e) => setTempReadme(e.target.value)}
+                        onKeyDown={handleEditorKeyDown}
+                        placeholder={`# Hello World! 🚀\n\nWelcome to my profile. This supports standard GitHub markdown.\n\n## 🛠️ My Core Stack\n- TypeScript / Next.js\n- Supabase / PostgreSQL\n\n## 📈 Life Commits\n- Working on VersionOfMe\n- Embracing daily discipline`}
+                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-4 py-3 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-mono text-xs leading-relaxed resize-none"
+                      />
+                      <div className="flex justify-between items-center text-[10px] text-text-muted font-mono">
+                        <span>Characters: {tempReadme.length}</span>
+                        <span className="text-[9px] text-growth/60">💡 Tip: Use standard markdown headings, bullets, and emojis.</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Status Indicator Alerts */}
               {profileError && (

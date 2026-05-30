@@ -326,6 +326,7 @@ export async function updateProfile(
     pronouns?: string;
     location?: string;
     website_url?: string;
+    readme?: string;
     social_links?: {
       linkedin?: string;
       instagram?: string;
@@ -374,6 +375,49 @@ export async function uploadAvatarFile(userId: string, file: File) {
     console.warn('Storage upload error, falling back to data URL:', e);
     return null;
   }
+}
+
+// =====================================================================
+// COMMIT MANIPULATION (Edit & Delete)
+// =====================================================================
+export async function updateCommit(userId: string, commitId: string, commit: {
+  title: string;
+  description: string;
+  mood_level: number;
+  emotional_tags: string[];
+}) {
+  const { data, error } = await supabase
+    .from('commits')
+    .update({
+      title: commit.title,
+      description: commit.description,
+      mood_level: commit.mood_level,
+      emotional_tags: commit.emotional_tags,
+    })
+    .eq('id', commitId)
+    .eq('user_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating commit:', error.message);
+    throw error;
+  }
+  return data;
+}
+
+export async function deleteCommit(userId: string, commitId: string) {
+  const { error } = await supabase
+    .from('commits')
+    .delete()
+    .eq('id', commitId)
+    .eq('user_id', userId);
+
+  if (error) {
+    console.error('Error deleting commit:', error.message);
+    throw error;
+  }
+  return true;
 }
 
 
