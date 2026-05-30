@@ -23,6 +23,11 @@ import {
 // Web Audio API Typewriter Synthesizer class
 class KeyboardSynth {
   ctx: AudioContext | null = null;
+  ambientGain: GainNode | null = null;
+  oscillators: OscillatorNode[] = [];
+  lfo: OscillatorNode | null = null;
+  currentMood: number = 3;
+  fadingVoices: { gainNode: GainNode; oscs: OscillatorNode[]; lfo: OscillatorNode | null }[] = [];
 
   init() {
     if (!this.ctx) {
@@ -129,6 +134,114 @@ class KeyboardSynth {
       click.stop(now + 0.015);
     }
   }
+
+  startAmbient(moodLevel: number) {
+    if (!this.ctx) this.init();
+    if (!this.ctx) return;
+
+    // Prevent re-triggering if it is already running for the exact same mood
+    if (this.currentMood === moodLevel && this.ambientGain) {
+      return;
+    }
+
+    this.currentMood = moodLevel;
+    const now = this.ctx.currentTime;
+
+    // Fade out previous ambient if playing
+    this.stopAmbient(2.0);
+
+    // Create gain & filter
+    const ambientGain = this.ctx.createGain();
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(260, now);
+    filter.Q.setValueAtTime(1.2, now);
+
+    // Slow LFO to modulate filter frequency (organic breathing movement)
+    const lfo = this.ctx.createOscillator();
+    lfo.frequency.setValueAtTime(0.04, now); // 25s cycle
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.setValueAtTime(100, now); // +/- 100Hz modulation
+
+    lfo.connect(lfoGain);
+    lfoGain.connect(filter.frequency);
+    lfo.start(now);
+    this.lfo = lfo;
+
+    ambientGain.connect(this.ctx.destination);
+    filter.connect(ambientGain);
+
+    // Pick warm chords based on average mood
+    let freqs = [110.00, 164.81, 261.63, 392.00]; // Reflective (A minor 7th)
+    if (moodLevel >= 4.2) {
+      freqs = [87.31, 130.81, 220.00, 329.63]; // Growth (F maj 7/9)
+    } else if (moodLevel >= 3.3) {
+      freqs = [98.00, 146.83, 246.94, 369.99]; // Balanced (G maj 7)
+    } else if (moodLevel >= 2.5) {
+      freqs = [110.00, 164.81, 261.63, 392.00]; // Deep (A min 7)
+    } else {
+      freqs = [73.42, 110.00, 174.61, 261.63]; // Heavy (D min 7)
+    }
+
+    const oscs: OscillatorNode[] = [];
+    freqs.forEach((freq, idx) => {
+      const osc = this.ctx!.createOscillator();
+      osc.type = idx % 2 === 0 ? "triangle" : "sine";
+      osc.frequency.setValueAtTime(freq, now);
+      
+      // Add subtle detune for warm chorus effect
+      osc.detune.setValueAtTime((Math.random() - 0.5) * 12, now);
+      
+      osc.connect(filter);
+      osc.start(now);
+      oscs.push(osc);
+    });
+
+    this.oscillators = oscs;
+    this.ambientGain = ambientGain;
+    
+    // Smooth fade in
+    ambientGain.gain.setValueAtTime(0, now);
+    ambientGain.gain.linearRampToValueAtTime(0.04, now + 2.5);
+  }
+
+  stopAmbient(fadeTime = 1.0) {
+    if (!this.ctx || !this.ambientGain) return;
+    const now = this.ctx.currentTime;
+    
+    const prevGain = this.ambientGain;
+    const prevOscs = this.oscillators;
+    const prevLfo = this.lfo;
+
+    prevGain.gain.setValueAtTime(prevGain.gain.value, now);
+    prevGain.gain.linearRampToValueAtTime(0, now + fadeTime);
+
+    const voiceEntry = { gainNode: prevGain, oscs: prevOscs, lfo: prevLfo };
+    this.fadingVoices.push(voiceEntry);
+
+    setTimeout(() => {
+      try {
+        voiceEntry.oscs.forEach(osc => {
+          try { osc.stop(); } catch (e) {}
+          try { osc.disconnect(); } catch (e) {}
+        });
+        if (voiceEntry.lfo) {
+          try { voiceEntry.lfo.stop(); } catch (e) {}
+          try { voiceEntry.lfo.disconnect(); } catch (e) {}
+        }
+        try { voiceEntry.gainNode.disconnect(); } catch (e) {}
+        
+        // Remove from fading list
+        this.fadingVoices = this.fadingVoices.filter(v => v !== voiceEntry);
+      } catch (err) {
+        // Safe catch
+      }
+    }, fadeTime * 1000 + 100);
+
+    this.ambientGain = null;
+    this.oscillators = [];
+    this.lfo = null;
+  }
 }
 
 // Initial Mock Data
@@ -206,6 +319,7 @@ export default function Page() {
   
   // Audio Synthesizer State
   const [soundEnabled, setSoundEnabled] = useState(true);
+  const [ambientEnabled, setAmbientEnabled] = useState(true);
   const synthRef = useRef<KeyboardSynth | null>(null);
 
   // Live App States
@@ -241,7 +355,24 @@ export default function Page() {
   // Initialize Audio Synth
   useEffect(() => {
     synthRef.current = new KeyboardSynth();
+    return () => {
+      if (synthRef.current) {
+        synthRef.current.stopAmbient(0.5);
+      }
+    };
   }, []);
+
+  // Handle Ambient Soundscape transitions based on states
+  useEffect(() => {
+    if (!synthRef.current) return;
+    if (viewMode === "dashboard" && ambientEnabled && soundEnabled) {
+      const moods = commits.map(c => c.mood_level);
+      const avgMood = moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 3;
+      synthRef.current.startAmbient(avgMood);
+    } else {
+      synthRef.current.stopAmbient(1.5);
+    }
+  }, [ambientEnabled, soundEnabled, commits, viewMode]);
 
   // Compute Aura Gradient based on average mood
   const getAuraStyles = () => {
@@ -382,6 +513,11 @@ export default function Page() {
     if (synthRef.current) {
       synthRef.current.init();
       if (soundEnabled) synthRef.current.playClick("enter");
+      if (ambientEnabled && soundEnabled) {
+        const moods = commits.map(c => c.mood_level);
+        const avgMood = moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 3;
+        synthRef.current.startAmbient(avgMood);
+      }
     }
     setViewMode("dashboard");
   };
@@ -425,6 +561,17 @@ export default function Page() {
 
         {/* Global Controls */}
         <div className="flex items-center space-x-6">
+          <button 
+            onClick={() => setAmbientEnabled(!ambientEnabled)} 
+            className="text-text-muted hover:text-text-primary transition-colors flex items-center space-x-2 text-xs font-mono"
+            title={ambientEnabled ? "Mute ambient pad" : "Unmute ambient pad"}
+          >
+            <Sparkles size={14} className={ambientEnabled && soundEnabled ? "text-memory-gold animate-pulse" : "text-text-disabled"} />
+            <span className={ambientEnabled && soundEnabled ? "text-text-primary" : "text-text-disabled"}>
+              {ambientEnabled && soundEnabled ? "AMBIENT ACTIVE" : "AMBIENT OFF"}
+            </span>
+          </button>
+
           <button 
             onClick={() => setSoundEnabled(!soundEnabled)} 
             className="text-text-muted hover:text-text-primary transition-colors flex items-center space-x-2 text-xs font-mono"
