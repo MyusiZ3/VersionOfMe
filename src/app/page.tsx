@@ -2905,7 +2905,7 @@ export default function Page() {
                   </div>
 
                   {readmePreviewMode ? (
-                    <div className="glass-panel p-5 rounded-xs border border-white/5 min-h-[220px] max-h-[350px] overflow-y-auto prose prose-invert text-xs leading-relaxed text-left text-text-secondary font-sans markdown-content">
+                    <div className="glass-panel p-5 rounded-xs border border-white/5 h-[300px] min-h-[300px] max-h-[300px] overflow-y-auto prose prose-invert text-xs leading-relaxed text-left text-text-secondary font-sans markdown-content custom-scrollbar">
                       {tempReadme ? (
                         <MarkdownRenderer content={tempReadme} />
                       ) : (
@@ -2920,7 +2920,7 @@ export default function Page() {
                         onChange={(e) => setTempReadme(e.target.value)}
                         onKeyDown={handleEditorKeyDown}
                         placeholder={`# Hello World! 🚀\n\nWelcome to my profile. This supports standard GitHub markdown.\n\n## 🛠️ My Core Stack\n- TypeScript / Next.js\n- Supabase / PostgreSQL\n\n## 📈 Life Commits\n- Working on VersionOfMe\n- Embracing daily discipline`}
-                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-4 py-3 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-mono text-xs leading-relaxed resize-none"
+                        className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-4 py-3 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-mono text-xs leading-relaxed resize-none h-[300px] min-h-[300px] max-h-[300px] overflow-y-auto custom-scrollbar"
                       />
                       <div className="flex justify-between items-center text-[10px] text-text-muted font-mono">
                         <span>Characters: {tempReadme.length}</span>
