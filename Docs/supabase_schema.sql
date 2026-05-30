@@ -195,3 +195,47 @@ insert into public.achievements (title, description, icon_name, xp_reward) value
 ('Discipline Master', 'Maintained discipline above 80 points.', 'Shield', 300),
 ('Luminous Heart', 'Maintained happiness above 90 points.', 'Heart', 300)
 on conflict (title) do nothing;
+
+-- =====================================================================
+-- 5. STORAGE BUCKETS & POLICIES FOR AVATARS
+-- =====================================================================
+
+-- Create 'avatars' storage bucket if it does not exist
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+-- Enable Row Level Security on storage.objects if not already enabled
+alter table storage.objects enable row level security;
+
+-- Drop existing storage policies if they exist
+drop policy if exists "Allow public access to avatars" on storage.objects;
+drop policy if exists "Allow authenticated users to upload avatars" on storage.objects;
+drop policy if exists "Allow authenticated users to update avatars" on storage.objects;
+drop policy if exists "Allow authenticated users to delete avatars" on storage.objects;
+
+-- Create policies
+
+-- 1. Allow public select access to the avatars bucket (so everyone can see profile pictures)
+create policy "Allow public access to avatars"
+on storage.objects for select
+using (bucket_id = 'avatars');
+
+-- 2. Allow authenticated users to upload files to the avatars bucket
+create policy "Allow authenticated users to upload avatars"
+on storage.objects for insert
+to authenticated
+with check (bucket_id = 'avatars');
+
+-- 3. Allow authenticated users to update their own files in the avatars bucket
+create policy "Allow authenticated users to update avatars"
+on storage.objects for update
+to authenticated
+using (bucket_id = 'avatars');
+
+-- 4. Allow authenticated users to delete their own files in the avatars bucket
+create policy "Allow authenticated users to delete avatars"
+on storage.objects for delete
+to authenticated
+using (bucket_id = 'avatars');
+
