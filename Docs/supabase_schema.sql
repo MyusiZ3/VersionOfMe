@@ -205,9 +205,6 @@ insert into storage.buckets (id, name, public)
 values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
--- Enable Row Level Security on storage.objects if not already enabled
-alter table storage.objects enable row level security;
-
 -- Drop existing storage policies if they exist
 drop policy if exists "Allow public access to avatars" on storage.objects;
 drop policy if exists "Allow authenticated users to upload avatars" on storage.objects;
