@@ -2,6 +2,23 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { 
+  getSessionUser,
+  fetchCommits,
+  insertCommit,
+  fetchMemories,
+  insertMemory,
+  fetchRelationships,
+  insertRelationship,
+  fetchCharacterStats,
+  updateCharacterStats,
+  fetchUserAchievements,
+  unlockAchievement,
+  fetchProfile,
+  updateProfile,
+  uploadAvatarFile
+} from "@/lib/supabase/db";
+import { createClient } from "@/lib/supabase/client";
+import { 
   GitCommit, 
   Calendar, 
   Users, 
@@ -17,8 +34,54 @@ import {
   Shield, 
   Sparkles,
   Award,
-  Database
+  Database,
+  Camera,
+  MapPin,
+  Globe,
+  Edit2
 } from "lucide-react";
+
+// Custom Interface for Inline Icons that accept a size prop
+interface CustomIconProps extends React.SVGProps<SVGSVGElement> {
+  size?: number;
+}
+
+// Inline Custom Brand Icons for LinkedIn and Instagram
+const Linkedin = ({ size, className, ...props }: CustomIconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={{ width: size || props.width || 14, height: size || props.height || 14 }}
+    {...props}
+  >
+    <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z" />
+    <rect x="2" y="9" width="4" height="12" />
+    <circle cx="4" cy="4" r="2" />
+  </svg>
+);
+
+const Instagram = ({ size, className, ...props }: CustomIconProps) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+    style={{ width: size || props.width || 14, height: size || props.height || 14 }}
+    {...props}
+  >
+    <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+    <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+    <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+  </svg>
+);
 
 // Web Audio API Typewriter Synthesizer class
 class KeyboardSynth {
@@ -200,9 +263,9 @@ class KeyboardSynth {
     this.oscillators = oscs;
     this.ambientGain = ambientGain;
     
-    // Smooth fade in
+    // Smooth fade in (using 0.12 for ambient volume so it is clearly audible)
     ambientGain.gain.setValueAtTime(0, now);
-    ambientGain.gain.linearRampToValueAtTime(0.04, now + 2.5);
+    ambientGain.gain.linearRampToValueAtTime(0.12, now + 2.5);
   }
 
   stopAmbient(fadeTime = 1.0) {
@@ -213,8 +276,15 @@ class KeyboardSynth {
     const prevOscs = this.oscillators;
     const prevLfo = this.lfo;
 
-    prevGain.gain.setValueAtTime(prevGain.gain.value, now);
-    prevGain.gain.linearRampToValueAtTime(0, now + fadeTime);
+    // Cleanly cancel any ongoing ramps before fading out
+    try {
+      prevGain.gain.cancelScheduledValues(now);
+      prevGain.gain.setValueAtTime(prevGain.gain.value || 0.12, now);
+      prevGain.gain.linearRampToValueAtTime(0, now + fadeTime);
+    } catch (e) {
+      // Fallback
+      try { prevGain.gain.linearRampToValueAtTime(0, now + fadeTime); } catch (err) {}
+    }
 
     const voiceEntry = { gainNode: prevGain, oscs: prevOscs, lfo: prevLfo };
     this.fadingVoices.push(voiceEntry);
@@ -326,6 +396,14 @@ export default function Page() {
   const [commits, setCommits] = useState(initialCommits);
   const [memories, setMemories] = useState(initialMemories);
   const [relationships, setRelationships] = useState(initialRelationships);
+  const [unlockedAchievements, setUnlockedAchievements] = useState<string[]>(["First Commit"]);
+
+  // Relationship Form States
+  const [showAddRelation, setShowAddRelation] = useState(false);
+  const [relName, setRelName] = useState("");
+  const [relStatus, setRelStatus] = useState("Active");
+  const [relImpact, setRelImpact] = useState<number>(3);
+  const [relSubmitLoading, setRelSubmitLoading] = useState(false);
   
   // Character Metrics (Reactive to Commits)
   const [stats, setStats] = useState({
@@ -339,6 +417,378 @@ export default function Page() {
     social_energy: 45,
     emotional_stability: 68
   });
+
+  // Supabase Auth and Sync States
+  const [user, setUser] = useState<any>(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [dbLoading, setDbLoading] = useState(false);
+  const supabaseClient = useRef(createClient());
+
+  // Profile and Avatar Customizer States
+  const [displayName, setDisplayName] = useState("Muhamad Sidik");
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(
+    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80"
+  );
+  const [profileUsername, setProfileUsername] = useState("MyusiZ3");
+  const [profileBio, setProfileBio] = useState("Aspiring Game Dev | App Dev");
+  const [profilePronouns, setProfilePronouns] = useState("he/him");
+  const [profileLocation, setProfileLocation] = useState("West Java, Bandung, Indonesia");
+  const [profileWebsiteUrl, setProfileWebsiteUrl] = useState("https://creative-portfolio-theta-rosy.vercel.app/");
+  const [profileLinkedin, setProfileLinkedin] = useState("muhamad-sidik-a6757b25b");
+  const [profileInstagram, setProfileInstagram] = useState("imyusi_");
+
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [tempDisplayName, setTempDisplayName] = useState("");
+  const [tempUsername, setTempUsername] = useState("");
+  const [tempAvatarUrl, setTempAvatarUrl] = useState<string>("");
+  const [tempBio, setTempBio] = useState("");
+  const [tempPronouns, setTempPronouns] = useState("");
+  const [tempLocation, setTempLocation] = useState("");
+  const [tempWebsiteUrl, setTempWebsiteUrl] = useState("");
+  const [tempLinkedin, setTempLinkedin] = useState("");
+  const [tempInstagram, setTempInstagram] = useState("");
+  
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [profileSuccess, setProfileSuccess] = useState("");
+
+  // Function to load all user data from Supabase
+  const loadUserData = async (userId: string) => {
+    setDbLoading(true);
+    try {
+      const dbCommits = await fetchCommits(userId);
+      if (dbCommits && dbCommits.length > 0) {
+        setCommits(dbCommits);
+      } else {
+        setCommits(initialCommits);
+      }
+
+      const dbMemories = await fetchMemories(userId);
+      if (dbMemories && dbMemories.length > 0) {
+        setMemories(dbMemories);
+      } else {
+        setMemories(initialMemories);
+      }
+
+      const dbRelationships = await fetchRelationships(userId);
+      if (dbRelationships && dbRelationships.length > 0) {
+        setRelationships(dbRelationships);
+      } else {
+        setRelationships(initialRelationships);
+      }
+
+      const dbStats = await fetchCharacterStats(userId);
+      if (dbStats) {
+        setStats({
+          level: dbStats.level,
+          xp: dbStats.xp,
+          xpNext: 1000,
+          confidence: dbStats.confidence,
+          discipline: dbStats.discipline,
+          happiness: dbStats.happiness,
+          creativity: dbStats.creativity,
+          social_energy: dbStats.social_energy,
+          emotional_stability: dbStats.emotional_stability
+        });
+      }
+
+      const dbAchievements = await fetchUserAchievements(userId);
+      if (dbAchievements && dbAchievements.length > 0) {
+        const unlockedTitles = dbAchievements.map((ua: any) => ua.achievements?.title).filter(Boolean);
+        setUnlockedAchievements(unlockedTitles);
+      } else {
+        setUnlockedAchievements(["First Commit"]);
+      }
+
+      // Try to fetch profile
+      try {
+        const dbProfile = await fetchProfile(userId);
+        if (dbProfile) {
+          if (dbProfile.display_name) setDisplayName(dbProfile.display_name);
+          if (dbProfile.avatar_url) setAvatarUrl(dbProfile.avatar_url);
+          if (dbProfile.username) setProfileUsername(dbProfile.username);
+          if (dbProfile.bio) setProfileBio(dbProfile.bio);
+          if (dbProfile.pronouns) setProfilePronouns(dbProfile.pronouns);
+          if (dbProfile.location) setProfileLocation(dbProfile.location);
+          if (dbProfile.website_url) setProfileWebsiteUrl(dbProfile.website_url);
+          
+          if (dbProfile.social_links) {
+            const socials = typeof dbProfile.social_links === 'string'
+              ? JSON.parse(dbProfile.social_links)
+              : dbProfile.social_links;
+            if (socials.linkedin) setProfileLinkedin(socials.linkedin);
+            if (socials.instagram) setProfileInstagram(socials.instagram);
+          }
+        }
+      } catch (err) {
+        console.warn("Extended profile columns not found or database sync failed, using fallbacks:", err);
+      }
+    } catch (e) {
+      console.error("Failed to load user data from Supabase:", e);
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  // Check active session on mount
+  useEffect(() => {
+    async function checkUser() {
+      try {
+        const u = await getSessionUser();
+        if (u) {
+          setUser(u);
+          await loadUserData(u.id);
+        } else {
+          // Guest mode: load from localStorage
+          const localName = localStorage.getItem("vom_guest_display_name");
+          const localAvatar = localStorage.getItem("vom_guest_avatar_url");
+          const localUsername = localStorage.getItem("vom_guest_username");
+          const localBio = localStorage.getItem("vom_guest_bio");
+          const localPronouns = localStorage.getItem("vom_guest_pronouns");
+          const localLocation = localStorage.getItem("vom_guest_location");
+          const localWebsite = localStorage.getItem("vom_guest_website");
+          const localLinkedin = localStorage.getItem("vom_guest_linkedin");
+          const localInstagram = localStorage.getItem("vom_guest_instagram");
+
+          if (localName) setDisplayName(localName);
+          if (localAvatar) setAvatarUrl(localAvatar);
+          if (localUsername) setProfileUsername(localUsername);
+          if (localBio) setProfileBio(localBio);
+          if (localPronouns) setProfilePronouns(localPronouns);
+          if (localLocation) setProfileLocation(localLocation);
+          if (localWebsite) setProfileWebsiteUrl(localWebsite);
+          if (localLinkedin) setProfileLinkedin(localLinkedin);
+          if (localInstagram) setProfileInstagram(localInstagram);
+        }
+      } catch (err) {
+        console.error("Auth check failed:", err);
+      }
+    }
+    checkUser();
+  }, []);
+
+  const handleAuthSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
+
+    try {
+      if (authMode === "login") {
+        const { data, error } = await supabaseClient.current.auth.signInWithPassword({
+          email,
+          password
+        });
+        if (error) throw error;
+        if (data.user) {
+          setUser(data.user);
+          await loadUserData(data.user.id);
+          setShowAuthModal(false);
+          enterWorkspace();
+        }
+      } else {
+        const { data, error } = await supabaseClient.current.auth.signUp({
+          email,
+          password
+        });
+        if (error) throw error;
+        if (data.user) {
+          setAuthError("Verification email sent! You can now log in.");
+          setAuthMode("login");
+        }
+      }
+    } catch (err: any) {
+      setAuthError(err.message || "An authentication error occurred.");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabaseClient.current.auth.signOut();
+    } catch (e) {
+      console.error(e);
+    }
+    setUser(null);
+    setCommits(initialCommits);
+    setMemories(initialMemories);
+    setRelationships(initialRelationships);
+    setUnlockedAchievements(["First Commit"]);
+    setStats({
+      level: 2,
+      xp: 470,
+      xpNext: 1000,
+      confidence: 65,
+      discipline: 72,
+      happiness: 58,
+      creativity: 80,
+      social_energy: 45,
+      emotional_stability: 68
+    });
+    
+    // Reset to local guest data
+    const localName = localStorage.getItem("vom_guest_display_name") || "Muhamad Sidik";
+    const localAvatar = localStorage.getItem("vom_guest_avatar_url") || "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=150&q=80";
+    const localUsername = localStorage.getItem("vom_guest_username") || "MyusiZ3";
+    const localBio = localStorage.getItem("vom_guest_bio") || "Aspiring Game Dev | App Dev";
+    const localPronouns = localStorage.getItem("vom_guest_pronouns") || "he/him";
+    const localLocation = localStorage.getItem("vom_guest_location") || "West Java, Bandung, Indonesia";
+    const localWebsite = localStorage.getItem("vom_guest_website") || "https://creative-portfolio-theta-rosy.vercel.app/";
+    const localLinkedin = localStorage.getItem("vom_guest_linkedin") || "muhamad-sidik-a6757b25b";
+    const localInstagram = localStorage.getItem("vom_guest_instagram") || "imyusi_";
+
+    setDisplayName(localName);
+    setAvatarUrl(localAvatar);
+    setProfileUsername(localUsername);
+    setProfileBio(localBio);
+    setProfilePronouns(localPronouns);
+    setProfileLocation(localLocation);
+    setProfileWebsiteUrl(localWebsite);
+    setProfileLinkedin(localLinkedin);
+    setProfileInstagram(localInstagram);
+
+    setViewMode("landing");
+  };
+
+  // Profile Customizer Actions
+  const openProfileModal = () => {
+    setTempDisplayName(displayName);
+    setTempUsername(profileUsername);
+    setTempAvatarUrl(avatarUrl || "");
+    setTempBio(profileBio);
+    setTempPronouns(profilePronouns);
+    setTempLocation(profileLocation);
+    setTempWebsiteUrl(profileWebsiteUrl);
+    setTempLinkedin(profileLinkedin);
+    setTempInstagram(profileInstagram);
+    
+    setProfileError("");
+    setProfileSuccess("");
+    setShowProfileModal(true);
+    if (soundEnabled && synthRef.current) {
+      synthRef.current.playClick("enter");
+    }
+  };
+
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileError("File size must be less than 2MB");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const base64 = event.target?.result as string;
+      setTempAvatarUrl(base64);
+      setProfileSuccess("Local file loaded. Click Save to upload & synchronize.");
+      if (soundEnabled && synthRef.current) {
+        synthRef.current.playClick("key");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleProfileSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setProfileSaving(true);
+    setProfileError("");
+    setProfileSuccess("");
+
+    try {
+      let finalAvatarUrl = tempAvatarUrl;
+
+      // If user is authenticated, sync to Supabase
+      if (user) {
+        // Try uploading to Storage bucket first if it is a new base64 data URL
+        if (tempAvatarUrl.startsWith("data:image")) {
+          try {
+            const res = await fetch(tempAvatarUrl);
+            const blob = await res.blob();
+            const file = new File([blob], "avatar.png", { type: "image/png" });
+            const storageUrl = await uploadAvatarFile(user.id, file);
+            if (storageUrl) {
+              finalAvatarUrl = storageUrl;
+            }
+          } catch (storageErr) {
+            console.warn("Storage upload failed, fallback to storing base64 URL directly:", storageErr);
+          }
+        }
+
+        // Update profile record in Supabase database
+        try {
+          await updateProfile(user.id, {
+            display_name: tempDisplayName,
+            avatar_url: finalAvatarUrl,
+            username: tempUsername.toLowerCase().trim(),
+            bio: tempBio,
+            pronouns: tempPronouns,
+            location: tempLocation,
+            website_url: tempWebsiteUrl,
+            social_links: {
+              linkedin: tempLinkedin,
+              instagram: tempInstagram
+            } as any
+          } as any);
+        } catch (dbErr: any) {
+          console.warn("Extended profiles update failed, falling back to core columns:", dbErr);
+          // Fallback update to standard columns which exist
+          await updateProfile(user.id, {
+            display_name: tempDisplayName,
+            avatar_url: finalAvatarUrl,
+            username: tempUsername.toLowerCase().trim()
+          });
+          setProfileSuccess("Core saved. Note: database does not support bio/links yet (saved locally).");
+        }
+      } else {
+        // Guest mode: save all fields to localStorage
+        localStorage.setItem("vom_guest_display_name", tempDisplayName);
+        localStorage.setItem("vom_guest_avatar_url", finalAvatarUrl);
+        localStorage.setItem("vom_guest_username", tempUsername.toLowerCase().trim());
+        localStorage.setItem("vom_guest_bio", tempBio);
+        localStorage.setItem("vom_guest_pronouns", tempPronouns);
+        localStorage.setItem("vom_guest_location", tempLocation);
+        localStorage.setItem("vom_guest_website", tempWebsiteUrl);
+        localStorage.setItem("vom_guest_linkedin", tempLinkedin);
+        localStorage.setItem("vom_guest_instagram", tempInstagram);
+      }
+
+      // Update local states in real time
+      setDisplayName(tempDisplayName);
+      setAvatarUrl(finalAvatarUrl || null);
+      setProfileUsername(tempUsername.toLowerCase().trim() || "guest");
+      setProfileBio(tempBio);
+      setProfilePronouns(tempPronouns);
+      setProfileLocation(tempLocation);
+      setProfileWebsiteUrl(tempWebsiteUrl);
+      setProfileLinkedin(tempLinkedin);
+      setProfileInstagram(tempInstagram);
+
+      if (!profileSuccess.includes("locally")) {
+        setProfileSuccess("Core identity synchronized successfully.");
+      }
+
+      if (soundEnabled && synthRef.current) {
+        synthRef.current.playClick("enter");
+      }
+
+      setTimeout(() => {
+        setShowProfileModal(false);
+      }, 1200);
+    } catch (err: any) {
+      console.error(err);
+      setProfileError(err.message || "Failed to update profile core.");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
   // Editor Form States
   const [editorTitle, setEditorTitle] = useState("");
@@ -365,14 +815,14 @@ export default function Page() {
   // Handle Ambient Soundscape transitions based on states
   useEffect(() => {
     if (!synthRef.current) return;
-    if (viewMode === "dashboard" && ambientEnabled && soundEnabled) {
+    if (viewMode === "dashboard" && ambientEnabled) {
       const moods = commits.map(c => c.mood_level);
       const avgMood = moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 3;
       synthRef.current.startAmbient(avgMood);
     } else {
       synthRef.current.stopAmbient(1.5);
     }
-  }, [ambientEnabled, soundEnabled, commits, viewMode]);
+  }, [ambientEnabled, commits, viewMode]);
 
   // Compute Aura Gradient based on average mood
   const getAuraStyles = () => {
@@ -434,7 +884,7 @@ export default function Page() {
   };
 
   // Submit new commit
-  const handleCommitSubmit = (e: React.FormEvent) => {
+  const handleCommitSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editorTitle.trim()) return;
 
@@ -448,55 +898,143 @@ export default function Page() {
     setCommitFlash(true);
     setTimeout(() => setCommitFlash(false), 800);
 
-    // Formulate commit object
-    const randomHash = Math.random().toString(16).substring(2, 9);
+    // Formulate tag array
     const tagsArray = editorTags
       .split(",")
       .map(tag => tag.trim().toLowerCase())
       .filter(tag => tag.length > 0);
 
     const xpEarned = 150 + Math.floor(Math.random() * 80);
+    const randomHash = Math.random().toString(16).substring(2, 9);
     
-    const newCommit = {
-      id: `c_${Date.now()}`,
-      hash: randomHash,
-      title: editorTitle,
-      description: editorDesc || "No description provided.",
-      mood_level: editorMood,
-      emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"],
-      created_at: new Date().toISOString(),
-      xp: xpEarned
+    // Calculate new stats locally first
+    const newXp = stats.xp + xpEarned;
+    const leveledUp = newXp >= stats.xpNext;
+    const nextStats = {
+      level: leveledUp ? stats.level + 1 : stats.level,
+      xp: leveledUp ? newXp - stats.xpNext : newXp,
+      confidence: Math.min(100, stats.confidence + (editorMood >= 4 ? 4 : -1)),
+      discipline: Math.min(100, stats.discipline + 5),
+      happiness: Math.min(100, Math.max(0, stats.happiness + (editorMood - 3) * 6)),
+      creativity: Math.min(100, stats.creativity + 3),
+      social_energy: stats.social_energy,
+      emotional_stability: Math.min(100, stats.emotional_stability + 2)
     };
 
-    // Update States
-    setCommits([newCommit, ...commits]);
+    if (user) {
+      // Sync to Supabase
+      try {
+        const savedCommit = await insertCommit(user.id, {
+          title: editorTitle,
+          description: editorDesc || "No description provided.",
+          mood_level: editorMood,
+          emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"]
+        });
 
-    // Add Memory node automatically
-    const newMemory = {
-      id: `m_${Date.now()}`,
-      title: editorTitle,
-      description: editorDesc || "Log commit description.",
-      category: editorMood >= 4 ? "Milestone" : "Routine",
-      event_date: new Date().toISOString().split("T")[0],
-      mood: editorMood === 5 ? "Ecstatic" : editorMood === 4 ? "Peaceful" : editorMood === 3 ? "Reflective" : editorMood === 2 ? "Melancholic" : "Heavy"
-    };
-    setMemories([newMemory, ...memories]);
+        const newCommit = {
+          id: savedCommit.id,
+          hash: savedCommit.hash,
+          title: savedCommit.title,
+          description: savedCommit.description,
+          mood_level: savedCommit.mood_level,
+          emotional_tags: savedCommit.emotional_tags,
+          created_at: savedCommit.created_at,
+          xp: xpEarned
+        };
+        setCommits(prev => [newCommit, ...prev]);
 
-    // Recalculate stats
-    setStats(prev => {
-      const newXp = prev.xp + xpEarned;
-      const leveledUp = newXp >= prev.xpNext;
-      return {
-        ...prev,
-        level: leveledUp ? prev.level + 1 : prev.level,
-        xp: leveledUp ? newXp - prev.xpNext : newXp,
-        confidence: Math.min(100, prev.confidence + (editorMood >= 4 ? 4 : -1)),
-        discipline: Math.min(100, prev.discipline + 5),
-        happiness: Math.min(100, Math.max(0, prev.happiness + (editorMood - 3) * 6)),
-        creativity: Math.min(100, prev.creativity + 3),
-        emotional_stability: Math.min(100, prev.emotional_stability + 2)
+        // Auto-save Memory to Supabase
+        const savedMemory = await insertMemory(user.id, {
+          title: editorTitle,
+          description: editorDesc || "Log commit description.",
+          category: editorMood >= 4 ? "Milestone" : "Routine",
+          event_date: new Date().toISOString().split("T")[0],
+          mood: editorMood === 5 ? "Ecstatic" : editorMood === 4 ? "Peaceful" : editorMood === 3 ? "Reflective" : editorMood === 2 ? "Melancholic" : "Heavy"
+        });
+
+        const newMemory = {
+          id: savedMemory.id,
+          title: savedMemory.title,
+          description: savedMemory.description,
+          category: savedMemory.category,
+          event_date: savedMemory.event_date,
+          mood: savedMemory.mood
+        };
+        setMemories(prev => [newMemory, ...prev]);
+
+        // Update stats in Supabase
+        await updateCharacterStats(user.id, nextStats);
+        setStats({
+          ...nextStats,
+          xpNext: 1000
+        });
+
+        // Check achievements
+        await checkAndUnlockAchievements(user.id, [newCommit, ...commits], nextStats);
+
+      } catch (err) {
+        console.error("Failed to save to Supabase, reverting to local fallback", err);
+        // Local state fallback inside catch block
+        const newCommit = {
+          id: `c_${Date.now()}`,
+          hash: randomHash,
+          title: editorTitle,
+          description: editorDesc || "No description provided.",
+          mood_level: editorMood,
+          emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"],
+          created_at: new Date().toISOString(),
+          xp: xpEarned
+        };
+        setCommits(prev => [newCommit, ...prev]);
+
+        const newMemory = {
+          id: `m_${Date.now()}`,
+          title: editorTitle,
+          description: editorDesc || "Log commit description.",
+          category: editorMood >= 4 ? "Milestone" : "Routine",
+          event_date: new Date().toISOString().split("T")[0],
+          mood: editorMood === 5 ? "Ecstatic" : editorMood === 4 ? "Peaceful" : editorMood === 3 ? "Reflective" : editorMood === 2 ? "Melancholic" : "Heavy"
+        };
+        setMemories(prev => [newMemory, ...prev]);
+
+        setStats({
+          ...nextStats,
+          xpNext: 1000
+        });
+
+        checkAndUnlockAchievementsLocal([newCommit, ...commits], nextStats);
+      }
+    } else {
+      // Local Guest fallback
+      const newCommit = {
+        id: `c_${Date.now()}`,
+        hash: randomHash,
+        title: editorTitle,
+        description: editorDesc || "No description provided.",
+        mood_level: editorMood,
+        emotional_tags: tagsArray.length > 0 ? tagsArray : ["reflection"],
+        created_at: new Date().toISOString(),
+        xp: xpEarned
       };
-    });
+      setCommits(prev => [newCommit, ...prev]);
+
+      const newMemory = {
+        id: `m_${Date.now()}`,
+        title: editorTitle,
+        description: editorDesc || "Log commit description.",
+        category: editorMood >= 4 ? "Milestone" : "Routine",
+        event_date: new Date().toISOString().split("T")[0],
+        mood: editorMood === 5 ? "Ecstatic" : editorMood === 4 ? "Peaceful" : editorMood === 3 ? "Reflective" : editorMood === 2 ? "Melancholic" : "Heavy"
+      };
+      setMemories(prev => [newMemory, ...prev]);
+
+      setStats({
+        ...nextStats,
+        xpNext: 1000
+      });
+
+      checkAndUnlockAchievementsLocal([newCommit, ...commits], nextStats);
+    }
 
     // Reset Fields
     setEditorTitle("");
@@ -508,16 +1046,121 @@ export default function Page() {
     setActiveTab("log");
   };
 
+  // Submit new relationship
+  const handleRelationshipSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!relName.trim()) return;
+
+    if (soundEnabled && synthRef.current) {
+      synthRef.current.init();
+      synthRef.current.playClick("enter");
+    }
+
+    setRelSubmitLoading(true);
+    const newRelData = {
+      name: relName,
+      status: relStatus,
+      emotional_impact: relImpact,
+      last_interaction: new Date().toISOString().split("T")[0]
+    };
+
+    if (user) {
+      try {
+        const savedRel = await insertRelationship(user.id, newRelData);
+        const newRel = {
+          id: savedRel.id,
+          name: savedRel.name,
+          status: savedRel.status,
+          emotional_impact: savedRel.emotional_impact,
+          last_interaction: savedRel.last_interaction
+        };
+        setRelationships(prev => [newRel, ...prev]);
+        setShowAddRelation(false);
+        setRelName("");
+        setRelStatus("Active");
+        setRelImpact(3);
+      } catch (err) {
+        console.error("Failed to save relationship to Supabase, falling back to local storage", err);
+        // Fallback to local
+        const localRel = {
+          id: `r_${Date.now()}`,
+          ...newRelData
+        };
+        setRelationships(prev => [localRel, ...prev]);
+        setShowAddRelation(false);
+        setRelName("");
+        setRelStatus("Active");
+        setRelImpact(3);
+      } finally {
+        setRelSubmitLoading(false);
+      }
+    } else {
+      // Guest local
+      const localRel = {
+        id: `r_${Date.now()}`,
+        ...newRelData
+      };
+      setRelationships(prev => [localRel, ...prev]);
+      setShowAddRelation(false);
+      setRelName("");
+      setRelStatus("Active");
+      setRelImpact(3);
+      setRelSubmitLoading(false);
+    }
+  };
+
+  // Helper to auto-unlock achievements
+  const checkAndUnlockAchievements = async (userId: string, currentCommits: any[], currentStats: any) => {
+    const newUnlocked: string[] = [];
+    
+    // 1. Discipline Master
+    if (currentStats.discipline >= 80 && !unlockedAchievements.includes("Discipline Master")) {
+      newUnlocked.push("Discipline Master");
+    }
+    
+    // 2. Luminous Heart
+    if (currentStats.happiness >= 90 && !unlockedAchievements.includes("Luminous Heart")) {
+      newUnlocked.push("Luminous Heart");
+    }
+    
+    // 3. Emotional Explorer
+    const moods = new Set(currentCommits.map(c => c.mood_level));
+    if (moods.size >= 5 && !unlockedAchievements.includes("Emotional Explorer")) {
+      newUnlocked.push("Emotional Explorer");
+    }
+
+    for (const title of newUnlocked) {
+      try {
+        await unlockAchievement(userId, title);
+        setUnlockedAchievements(prev => [...prev, title]);
+      } catch (e) {
+        console.error(`Failed to unlock achievement ${title}:`, e);
+      }
+    }
+  };
+
+  const checkAndUnlockAchievementsLocal = (currentCommits: any[], currentStats: any) => {
+    const newUnlocked: string[] = [];
+    if (currentStats.discipline >= 80 && !unlockedAchievements.includes("Discipline Master")) {
+      newUnlocked.push("Discipline Master");
+    }
+    if (currentStats.happiness >= 90 && !unlockedAchievements.includes("Luminous Heart")) {
+      newUnlocked.push("Luminous Heart");
+    }
+    const moods = new Set(currentCommits.map(c => c.mood_level));
+    if (moods.size >= 5 && !unlockedAchievements.includes("Emotional Explorer")) {
+      newUnlocked.push("Emotional Explorer");
+    }
+    if (newUnlocked.length > 0) {
+      setUnlockedAchievements(prev => [...prev, ...newUnlocked]);
+    }
+  };
+
   // Transition to dashboard with gesture sound activation
   const enterWorkspace = () => {
     if (synthRef.current) {
       synthRef.current.init();
       if (soundEnabled) synthRef.current.playClick("enter");
-      if (ambientEnabled && soundEnabled) {
-        const moods = commits.map(c => c.mood_level);
-        const avgMood = moods.length > 0 ? moods.reduce((a, b) => a + b, 0) / moods.length : 3;
-        synthRef.current.startAmbient(avgMood);
-      }
     }
     setViewMode("dashboard");
   };
@@ -566,9 +1209,9 @@ export default function Page() {
             className="text-text-muted hover:text-text-primary transition-colors flex items-center space-x-2 text-xs font-mono"
             title={ambientEnabled ? "Mute ambient pad" : "Unmute ambient pad"}
           >
-            <Sparkles size={14} className={ambientEnabled && soundEnabled ? "text-memory-gold animate-pulse" : "text-text-disabled"} />
-            <span className={ambientEnabled && soundEnabled ? "text-text-primary" : "text-text-disabled"}>
-              {ambientEnabled && soundEnabled ? "AMBIENT ACTIVE" : "AMBIENT OFF"}
+            <Sparkles size={14} className={ambientEnabled ? "text-memory-gold animate-pulse" : "text-text-disabled"} />
+            <span className={ambientEnabled ? "text-text-primary" : "text-text-disabled"}>
+              {ambientEnabled ? "AMBIENT ACTIVE" : "AMBIENT OFF"}
             </span>
           </button>
 
@@ -590,12 +1233,43 @@ export default function Page() {
             )}
           </button>
 
-          {viewMode === "dashboard" && (
+          {/* Real-time profile identity indicator */}
+          <div 
+            onClick={openProfileModal} 
+            className="flex items-center space-x-2 border-l border-white/5 pl-4 cursor-pointer hover:opacity-80 transition-opacity"
+            title="Configure Profile"
+          >
+            <div className="relative w-6 h-6 rounded-xs overflow-hidden bg-white/5 border border-white/10 shrink-0 flex items-center justify-center">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+              ) : (
+                <span className="font-serif italic text-[10px] text-gradient-gold">
+                  {displayName.charAt(0)}
+                </span>
+              )}
+            </div>
+            <span className="font-mono text-[9px] text-text-secondary truncate max-w-[80px] hidden sm:inline-block">
+              {displayName}
+            </span>
+          </div>
+
+          {user ? (
             <button 
-              onClick={() => setViewMode("landing")} 
-              className="text-xs font-mono text-text-muted hover:text-text-primary transition-colors border border-white/5 px-3 py-1.5 rounded-xs bg-memory-surface/20"
+              onClick={handleLogout} 
+              className="text-[10px] font-mono text-loss-crimson hover:text-text-primary transition-colors border border-loss-crimson/15 px-3 py-1.5 rounded-xs bg-loss-crimson/5 uppercase tracking-wider"
+              title={`Logged in as ${user.email}`}
             >
-              [ LOGOUT ]
+              [ DISCONNECT SYNC ]
+            </button>
+          ) : (
+            <button 
+              onClick={() => {
+                setAuthMode("login");
+                setShowAuthModal(true);
+              }} 
+              className="text-[10px] font-mono text-growth hover:text-text-primary transition-colors border border-growth/15 px-3 py-1.5 rounded-xs bg-growth/5 uppercase tracking-wider"
+            >
+              [ CONNECT CLOUD ]
             </button>
           )}
         </div>
@@ -622,14 +1296,27 @@ export default function Page() {
             A secure emotional sanctuary built to represent a human life as an evolving codebase. Log life commits, track your inner stats, and build your timeline.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-6">
             <button 
               onClick={enterWorkspace}
               className="glow-btn px-8 py-4 bg-text-primary text-deep-archive rounded-xs font-mono text-xs tracking-wider uppercase flex items-center space-x-3 hover:bg-growth hover:text-deep-archive transition-all shadow-lg hover:shadow-growth/15"
             >
-              <span>Initialize Workspace</span>
+              <span>{user ? "Enter Cloud Workspace" : "Enter Offline Guest Sandbox"}</span>
               <ArrowRight size={14} />
             </button>
+
+            {!user && (
+              <button 
+                onClick={() => {
+                  setAuthMode("login");
+                  setShowAuthModal(true);
+                }}
+                className="px-8 py-4 border border-growth/20 text-growth hover:bg-growth/5 transition-all rounded-xs font-mono text-xs tracking-wider uppercase flex items-center space-x-2"
+              >
+                <Lock size={12} />
+                <span>Sync Cloud Vault</span>
+              </button>
+            )}
 
             <a 
               href="#learn-more"
@@ -753,7 +1440,127 @@ export default function Page() {
           {/* LEFT COLUMN: DYNAMIC AURA & DOCK STATUS PANEL (4 Columns) */}
           <div className="lg:col-span-4 flex flex-col space-y-6">
             
-            {/* The Character / Aura Panel */}
+            {/* 1. Premium GitHub Profile Identity Card */}
+            <div className="glass-panel p-6 rounded-md relative overflow-hidden flex flex-col shadow-lg border border-white/[0.04] space-y-4">
+              {/* Header Decorator */}
+              <div className="flex justify-between items-center border-b border-white/[0.03] pb-3">
+                <span className="font-mono text-[9px] text-text-muted tracking-widest uppercase">
+                  [ SECURE_IDENTITY_CARD ]
+                </span>
+                <button 
+                  onClick={openProfileModal}
+                  className="text-text-muted hover:text-text-primary transition-all p-1 hover:bg-white/5 rounded-xs flex items-center space-x-1.5"
+                  title="Customize Identity"
+                >
+                  <Edit2 size={11} className="text-growth" />
+                  <span className="font-mono text-[9px] tracking-wider uppercase">EDIT</span>
+                </button>
+              </div>
+
+              {/* Avatar & User Core Meta */}
+              <div className="flex items-center space-x-4">
+                <div className="relative group cursor-pointer shrink-0" onClick={openProfileModal}>
+                  {/* Glow Backdrop */}
+                  <div className="absolute inset-0 bg-growth/20 rounded-xs filter blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  {/* Actual Avatar */}
+                  <div className="relative w-16 h-16 rounded-xs border border-white/10 overflow-hidden bg-deep-archive/60 flex items-center justify-center">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="font-serif italic text-2xl text-gradient-gold">{displayName.charAt(0)}</span>
+                    )}
+                    
+                    {/* Camera Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                      <Camera size={16} className="text-white animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="flex items-baseline space-x-1.5 flex-wrap">
+                    <h2 className="font-serif text-base text-text-primary truncate font-bold leading-tight">
+                      {displayName}
+                    </h2>
+                    {profilePronouns && (
+                      <span className="font-mono text-[9px] text-text-muted px-1.5 py-0.2 bg-white/5 border border-white/5 rounded-xs">
+                        {profilePronouns}
+                      </span>
+                    )}
+                  </div>
+                  <p className="font-mono text-xs text-growth truncate">
+                    @{profileUsername}
+                  </p>
+                </div>
+              </div>
+
+              {/* Bio Block */}
+              {profileBio && (
+                <div className="bg-white/[0.01] border border-white/[0.03] p-3 rounded-xs text-left">
+                  <p className="font-sans text-xs font-light text-text-secondary leading-relaxed italic">
+                    "{profileBio}"
+                  </p>
+                </div>
+              )}
+
+              {/* Metadata Grid (GitHub style) */}
+              <div className="space-y-2 pt-2 border-t border-white/[0.03] font-mono text-[10px] text-text-secondary text-left">
+                {profileLocation && (
+                  <div className="flex items-center space-x-2.5">
+                    <MapPin size={11} className="text-text-muted shrink-0" />
+                    <span className="truncate">{profileLocation}</span>
+                  </div>
+                )}
+
+                {profileWebsiteUrl && (
+                  <div className="flex items-center space-x-2.5">
+                    <Globe size={11} className="text-text-muted shrink-0" />
+                    <a 
+                      href={profileWebsiteUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer" 
+                      className="text-reflection-blue hover:underline truncate"
+                    >
+                      {profileWebsiteUrl.replace(/^https?:\/\//, '')}
+                    </a>
+                  </div>
+                )}
+
+                {/* Social Links Block */}
+                {(profileLinkedin || profileInstagram) && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 pt-1">
+                    {profileLinkedin && (
+                      <div className="flex items-center space-x-1.5">
+                        <Linkedin size={10} className="text-text-muted shrink-0" />
+                        <a 
+                          href={`https://linkedin.com/in/${profileLinkedin}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-text-muted hover:text-text-primary transition-colors text-[9px]"
+                        >
+                          in/{profileLinkedin}
+                        </a>
+                      </div>
+                    )}
+                    {profileInstagram && (
+                      <div className="flex items-center space-x-1.5">
+                        <Instagram size={10} className="text-text-muted shrink-0" />
+                        <a 
+                          href={`https://instagram.com/${profileInstagram}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-text-muted hover:text-text-primary transition-colors text-[9px]"
+                        >
+                          @{profileInstagram}
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Dynamic Aura Orb & Status Panel */}
             <div className="glass-panel p-6 rounded-md relative overflow-hidden flex flex-col items-center text-center shadow-lg border border-white/[0.04]">
               <span className="absolute top-4 left-4 font-mono text-[9px] text-text-muted tracking-widest uppercase">
                 [ SECURE_CORE_AURA ]
@@ -1105,10 +1912,90 @@ export default function Page() {
                     <span className="font-mono text-xs text-text-muted uppercase tracking-wider">
                       $ relations --emotional-impact-map
                     </span>
-                    <span className="font-mono text-[10px] text-text-disabled uppercase">
-                      Active connections: {relationships.filter(r => r.status === "Active").length}
-                    </span>
+                    <button 
+                      onClick={() => {
+                        if (soundEnabled && synthRef.current) synthRef.current.playClick("enter");
+                        setShowAddRelation(!showAddRelation);
+                      }}
+                      className="font-mono text-[10px] text-text-muted hover:text-white transition-colors bg-white/[0.03] hover:bg-white/[0.08] px-2.5 py-1 rounded-xs border border-white/[0.05]"
+                    >
+                      {showAddRelation ? "CLOSE FORM" : "+ ADD CONNECTION"}
+                    </button>
                   </div>
+
+                  {/* Add Connection Form */}
+                  {showAddRelation && (
+                    <form 
+                      onSubmit={handleRelationshipSubmit} 
+                      className="glass-card p-5 rounded-sm space-y-4 border border-white/[0.08] animate-fade-in"
+                    >
+                      <h4 className="font-serif text-base text-text-primary">Establish Connection</h4>
+                      
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="font-mono text-[10px] text-text-secondary uppercase">Connection Name</label>
+                          <input 
+                            type="text" 
+                            value={relName}
+                            onChange={(e) => setRelName(e.target.value)}
+                            placeholder="e.g. Mentor, Partner, Self"
+                            required
+                            className="w-full bg-white/[0.02] border border-white/[0.08] px-3 py-2 rounded-xs font-mono text-xs text-text-primary focus:outline-none focus:border-white/20"
+                          />
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label className="font-mono text-[10px] text-text-secondary uppercase">Status Mode</label>
+                          <select 
+                            value={relStatus}
+                            onChange={(e) => setRelStatus(e.target.value)}
+                            className="w-full bg-white/[0.02] border border-white/[0.08] px-3 py-2 rounded-xs font-mono text-xs text-text-primary focus:outline-none focus:border-white/20"
+                          >
+                            <option value="Active" className="bg-black text-white">Active (Nurturing / Resonating)</option>
+                            <option value="Faded" className="bg-black text-white">Faded (Distant / Nostalgic)</option>
+                            <option value="Conflict" className="bg-black text-white">Conflict (Strained / Instructive)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <label className="font-mono text-[10px] text-text-secondary uppercase">Emotional Resonance (-5 to +5)</label>
+                          <span className={`font-mono text-xs ${relImpact >= 0 ? "text-growth" : "text-loss-crimson"}`}>
+                            {relImpact >= 0 ? `+${relImpact}` : relImpact}
+                          </span>
+                        </div>
+                        <input 
+                          type="range" 
+                          min="-5" 
+                          max="5"
+                          value={relImpact}
+                          onChange={(e) => setRelImpact(parseInt(e.target.value))}
+                          className="w-full accent-growth"
+                        />
+                      </div>
+
+                      <div className="flex justify-end space-x-3 pt-2">
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            if (soundEnabled && synthRef.current) synthRef.current.playClick("backspace");
+                            setShowAddRelation(false);
+                          }}
+                          className="font-mono text-[10px] text-text-muted hover:text-text-primary px-3 py-1.5 transition-colors uppercase"
+                        >
+                          Cancel
+                        </button>
+                        <button 
+                          type="submit"
+                          disabled={relSubmitLoading}
+                          className="font-mono text-[10px] bg-white text-black hover:bg-neutral-200 px-4 py-1.5 rounded-xs transition-colors uppercase disabled:opacity-50"
+                        >
+                          {relSubmitLoading ? "Saving..." : "Lock Connection"}
+                        </button>
+                      </div>
+                    </form>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {relationships.map((r) => {
@@ -1147,6 +2034,82 @@ export default function Page() {
                                 style={{ width: `${Math.abs(r.emotional_impact) * 20}%` }}
                               />
                             </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Achievements Section */}
+                  <div className="flex justify-between items-center border-b border-white/[0.03] pt-6 pb-3">
+                    <span className="font-mono text-xs text-text-muted uppercase tracking-wider">
+                      $ achievements --system-status
+                    </span>
+                    <span className="font-mono text-[10px] text-text-disabled uppercase">
+                      Unlocked: {unlockedAchievements.length} / 4
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      {
+                        title: "First Commit",
+                        description: "Initialized your journey in the system.",
+                        xp: 200,
+                        icon: <Award className="w-5 h-5 text-growth" />
+                      },
+                      {
+                        title: "Discipline Master",
+                        description: "Reached 80% discipline score through focused commits.",
+                        xp: 500,
+                        icon: <Shield className="w-5 h-5 text-reflection-blue" />
+                      },
+                      {
+                        title: "Luminous Heart",
+                        description: "Attained a peak state of happiness (90%+).",
+                        xp: 600,
+                        icon: <Heart className="w-5 h-5 text-loss-crimson" />
+                      },
+                      {
+                        title: "Emotional Explorer",
+                        description: "Logged reflection commits in 5 distinct emotional states.",
+                        xp: 400,
+                        icon: <Sparkles className="w-5 h-5 text-memory-gold" />
+                      }
+                    ].map((ach) => {
+                      const isUnlocked = unlockedAchievements.includes(ach.title);
+                      return (
+                        <div 
+                          key={ach.title} 
+                          className={`glass-card p-5 rounded-sm flex items-start space-x-4 transition-all duration-300 relative overflow-hidden ${
+                            isUnlocked 
+                              ? "border-growth/20 bg-growth/[0.02]" 
+                              : "opacity-40 border-white/[0.03] bg-white/[0.005]"
+                          }`}
+                        >
+                          {/* Premium Glowing aura for unlocked ones */}
+                          {isUnlocked && (
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-growth/5 rounded-full blur-xl -mr-6 -mt-6 pointer-events-none" />
+                          )}
+                          
+                          <div className={`p-3 rounded-full ${
+                            isUnlocked ? "bg-white/[0.04] border border-white/[0.05]" : "bg-white/[0.01] border border-transparent"
+                          }`}>
+                            {isUnlocked ? ach.icon : <Lock className="w-5 h-5 text-text-disabled" />}
+                          </div>
+                          
+                          <div className="space-y-1 flex-1">
+                            <div className="flex justify-between items-center">
+                              <h4 className="font-serif text-base text-text-primary">{ach.title}</h4>
+                              <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-xs border ${
+                                isUnlocked 
+                                  ? "text-growth border-growth/20 bg-growth/5" 
+                                  : "text-text-disabled border-white/[0.03] bg-white/[0.01]"
+                              }`}>
+                                {isUnlocked ? `+${ach.xp} XP` : "LOCKED"}
+                              </span>
+                            </div>
+                            <p className="text-xs text-text-muted leading-relaxed font-sans">{ach.description}</p>
                           </div>
                         </div>
                       );
@@ -1282,6 +2245,346 @@ export default function Page() {
           <span className="text-growth">BUILD: v1.0.0-PROTOTYPE</span>
         </div>
       </footer>
+
+      {/* 3. PREMIUM AUTH MODAL (GLASSMORPHISM) */}
+      {showAuthModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-deep-archive/80 backdrop-blur-md animate-fade-in">
+          <div className="glass-panel max-w-md w-full p-8 rounded-sm border border-white/10 relative overflow-hidden shadow-2xl">
+            {/* Ambient decorative glowing spots */}
+            <div className="absolute -top-24 -right-24 w-48 h-48 bg-connection-purple/20 rounded-full filter blur-xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-growth/10 rounded-full filter blur-xl pointer-events-none" />
+
+            <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+              <span className="font-mono text-[10px] text-text-muted tracking-widest uppercase">
+                [ AUTH_CORE_GATEWAY ]
+              </span>
+              <button 
+                onClick={() => {
+                  setShowAuthModal(false);
+                  setAuthError("");
+                }}
+                className="text-text-muted hover:text-text-primary font-mono text-xs"
+              >
+                [ ESC ]
+              </button>
+            </div>
+
+            <h2 className="font-serif text-3xl text-text-primary mb-2 text-left">
+              {authMode === "login" ? "Sync with Cloud" : "Create Cloud Vault"}
+            </h2>
+            <p className="text-xs text-text-secondary font-light leading-relaxed mb-6 font-sans text-left">
+              {authMode === "login" 
+                ? "Enter your secure credentials to retrieve your emotional database state and life logs."
+                : "Initialize a secure remote PostgreSQL database for persistent, multi-device tracking."
+              }
+            </p>
+
+            <form onSubmit={handleAuthSubmit} className="space-y-4 font-mono text-xs text-left">
+              <div className="space-y-1">
+                <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                  Identity (Email Address)
+                </label>
+                <input 
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@domain.com"
+                  className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                  Access Key (Password)
+                </label>
+                <input 
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                />
+              </div>
+
+              {authError && (
+                <div className={`p-3 rounded-xs border text-[11px] leading-relaxed ${
+                  authError.includes("Verification email") || authError.includes("Check your email")
+                    ? "bg-growth/5 border-growth/20 text-growth" 
+                    : "bg-loss-crimson/5 border-loss-crimson/20 text-loss-crimson"
+                }`}>
+                  {authError}
+                </div>
+              )}
+
+              <div className="pt-4 flex flex-col space-y-3">
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="glow-btn w-full py-3 bg-text-primary text-deep-archive rounded-xs font-mono text-xs font-bold tracking-wider uppercase flex items-center justify-center space-x-2 hover:bg-growth hover:text-deep-archive transition-all disabled:opacity-50"
+                >
+                  {authLoading ? (
+                    <span>Executing Sync...</span>
+                  ) : (
+                    <>
+                      <Lock size={12} />
+                      <span>{authMode === "login" ? "Decrypt & Initialize" : "Provision Cloud Vault"}</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode(authMode === "login" ? "signup" : "login");
+                    setAuthError("");
+                  }}
+                  className="text-center text-[10px] text-text-muted hover:text-text-primary transition-colors py-1 cursor-pointer"
+                >
+                  {authMode === "login" 
+                    ? "NEED AN ACCOUNT? SECURE A NEW VAULT" 
+                    : "ALREADY HAVE A VAULT? DECRYPT EXISTING"
+                  }
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 4. PREMIUM PROFILE CUSTOMIZER MODAL (GLASSMORPHISM) */}
+      {showProfileModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-deep-archive/85 backdrop-blur-md animate-fade-in overflow-y-auto">
+          <div className="glass-panel max-w-2xl w-full p-6 md:p-8 rounded-sm border border-white/10 relative overflow-hidden shadow-2xl my-8">
+            {/* Ambient decorative glowing spots */}
+            <div className="absolute -top-24 -left-24 w-48 h-48 bg-growth/10 rounded-full filter blur-xl pointer-events-none" />
+            <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-reflection-blue/10 rounded-full filter blur-xl pointer-events-none" />
+
+            <div className="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+              <span className="font-mono text-[10px] text-text-muted tracking-widest uppercase">
+                [ PROFILE_CUSTOMIZER_INTERFACE ]
+              </span>
+              <button 
+                onClick={() => {
+                  setShowProfileModal(false);
+                  setProfileError("");
+                  setProfileSuccess("");
+                }}
+                className="text-text-muted hover:text-text-primary font-mono text-xs"
+              >
+                [ ESC ]
+              </button>
+            </div>
+
+            <h2 className="font-serif text-3xl text-text-primary mb-1 text-left">
+              Customize Identity
+            </h2>
+            <p className="text-xs text-text-secondary font-light leading-relaxed mb-6 font-sans text-left">
+              Synchronize your personal metadata across your secure Postgres vault and profile identity card.
+            </p>
+
+            <form onSubmit={handleProfileSave} className="space-y-5 text-left">
+              {/* Avatar Upload Block */}
+              <div className="flex flex-col sm:flex-row items-center gap-4 bg-white/[0.01] border border-white/[0.03] p-4 rounded-xs">
+                <div className="relative group cursor-pointer shrink-0">
+                  <div className="absolute inset-0 bg-growth/20 rounded-xs filter blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="relative w-20 h-20 rounded-xs border border-white/10 overflow-hidden bg-deep-archive/60 flex items-center justify-center">
+                    {tempAvatarUrl ? (
+                      <img src={tempAvatarUrl} alt="Avatar Preview" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="font-serif italic text-3xl text-gradient-gold">
+                        {tempDisplayName ? tempDisplayName.charAt(0) : "V"}
+                      </span>
+                    )}
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity duration-300">
+                      <Camera size={20} className="text-white animate-pulse" />
+                    </div>
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={handleAvatarFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer animate-pulse"
+                  />
+                </div>
+                
+                <div className="space-y-1.5 text-center sm:text-left flex-1 min-w-0">
+                  <span className="font-mono text-[10px] text-text-muted uppercase tracking-widest block">
+                    Identity Portrait (Avatar)
+                  </span>
+                  <p className="text-xs text-text-secondary font-light leading-relaxed font-sans">
+                    Click portrait to choose a new file. Recommended: square image, under 2MB.
+                  </p>
+                </div>
+              </div>
+
+              {/* Identity Form Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                    Display Name
+                  </label>
+                  <input 
+                    type="text"
+                    required
+                    value={tempDisplayName}
+                    onChange={(e) => setTempDisplayName(e.target.value)}
+                    placeholder="Muhamad Sidik"
+                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                    Username / Handle
+                  </label>
+                  <div className="relative flex items-center">
+                    <span className="absolute left-3 text-text-muted">@</span>
+                    <input 
+                      type="text"
+                      required
+                      value={tempUsername}
+                      onChange={(e) => setTempUsername(e.target.value)}
+                      placeholder="myusiz3"
+                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs pl-8 pr-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                    Pronouns
+                  </label>
+                  <input 
+                    type="text"
+                    value={tempPronouns}
+                    onChange={(e) => setTempPronouns(e.target.value)}
+                    placeholder="e.g. he/him, she/her, they/them"
+                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                    Location
+                  </label>
+                  <input 
+                    type="text"
+                    value={tempLocation}
+                    onChange={(e) => setTempLocation(e.target.value)}
+                    placeholder="e.g. Bandung, Indonesia"
+                    className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                  />
+                </div>
+              </div>
+
+              {/* Bio Field */}
+              <div className="space-y-1 font-mono text-xs">
+                <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                  Bio / Status Message
+                </label>
+                <textarea
+                  rows={2}
+                  value={tempBio}
+                  onChange={(e) => setTempBio(e.target.value)}
+                  placeholder="Tell us about yourself..."
+                  className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors font-sans resize-none text-sm font-light leading-relaxed"
+                />
+              </div>
+
+              {/* Social Links Block */}
+              <div className="border-t border-white/5 pt-4 space-y-3 font-mono text-xs">
+                <span className="text-[10px] text-text-muted uppercase tracking-widest block">
+                  Social Network Integrations
+                </span>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-text-secondary uppercase block">
+                      Website URL
+                    </label>
+                    <input 
+                      type="url"
+                      value={tempWebsiteUrl}
+                      onChange={(e) => setTempWebsiteUrl(e.target.value)}
+                      placeholder="https://yourpage.com"
+                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-text-secondary uppercase block">
+                      LinkedIn Username
+                    </label>
+                    <input 
+                      type="text"
+                      value={tempLinkedin}
+                      onChange={(e) => setTempLinkedin(e.target.value)}
+                      placeholder="linkedin-username"
+                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[9px] text-text-secondary uppercase block">
+                      Instagram Handle
+                    </label>
+                    <input 
+                      type="text"
+                      value={tempInstagram}
+                      onChange={(e) => setTempInstagram(e.target.value)}
+                      placeholder="instagram_handle"
+                      className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2 focus:border-growth focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Status Indicator Alerts */}
+              {profileError && (
+                <div className="p-3 bg-loss-crimson/5 border border-loss-crimson/20 rounded-xs text-[11px] leading-relaxed text-loss-crimson font-mono">
+                  {profileError}
+                </div>
+              )}
+              {profileSuccess && (
+                <div className="p-3 bg-growth/5 border border-growth/20 rounded-xs text-[11px] leading-relaxed text-growth font-mono">
+                  {profileSuccess}
+                </div>
+              )}
+
+              {/* Actions Footer */}
+              <div className="flex justify-end space-x-3 pt-4 border-t border-white/5 font-mono text-xs">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowProfileModal(false);
+                    setProfileError("");
+                    setProfileSuccess("");
+                  }}
+                  className="px-4 py-2.5 text-text-muted hover:text-text-primary transition-colors uppercase"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={profileSaving}
+                  className="glow-btn px-6 py-2.5 bg-text-primary text-deep-archive rounded-xs font-bold tracking-wider uppercase flex items-center justify-center space-x-2 hover:bg-growth hover:text-deep-archive transition-all disabled:opacity-50"
+                >
+                  {profileSaving ? (
+                    <span>Synchronizing...</span>
+                  ) : (
+                    <>
+                      <Database size={12} />
+                      <span>Sync Settings</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
