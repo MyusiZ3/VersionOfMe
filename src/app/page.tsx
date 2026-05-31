@@ -628,6 +628,18 @@ export default function Page() {
     checkUser();
   }, []);
 
+  // Lock background scrolling when a modal overlay is active
+  useEffect(() => {
+    if (showAuthModal || showProfileModal) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [showAuthModal, showProfileModal]);
+
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
