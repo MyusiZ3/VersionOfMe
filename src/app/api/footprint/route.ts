@@ -77,7 +77,7 @@ export async function GET(request: NextRequest) {
         domain: "adobe.com",
         date: "2013-10-04",
         description: "In October 2013, Adobe suffered a massive security breach exposing email addresses and password hashes.",
-        compromisedData: ["Email addresses", "Passwords", "Password hints"],
+        dataClasses: ["Email addresses", "Passwords", "Password hints"],
         severity: "Medium"
       },
       {
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
         domain: "canva.com",
         date: "2019-05-24",
         description: "In May 2019, the graphic design tool Canva suffered a data breach exposing user account information.",
-        compromisedData: ["Email addresses", "Names", "Usernames", "Passwords"],
+        dataClasses: ["Email addresses", "Names", "Usernames", "Passwords"],
         severity: "High"
       },
       {
@@ -93,7 +93,7 @@ export async function GET(request: NextRequest) {
         domain: "linkedin.com",
         date: "2021-06-22",
         description: "An archive containing data scraped from 700 million LinkedIn users was posted for sale on a hacker forum.",
-        compromisedData: ["Email addresses", "Full names", "Phone numbers", "Job titles"],
+        dataClasses: ["Email addresses", "Full names", "Phone numbers", "Job titles"],
         severity: "Low"
       },
       {
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
         domain: "twitter.com",
         date: "2023-01-04",
         description: "In January 2023, a data set containing 200 million Twitter profiles was leaked, including emails and creation dates.",
-        compromisedData: ["Email addresses", "Usernames", "Created at dates"],
+        dataClasses: ["Email addresses", "Usernames", "Created at dates"],
         severity: "Medium"
       },
       {
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
         domain: "myspace.com",
         date: "2016-05-31",
         description: "A historic breach of MySpace containing logins and passwords from older registrations was uploaded to dark web markets.",
-        compromisedData: ["Email addresses", "Usernames", "Passwords"],
+        dataClasses: ["Email addresses", "Usernames", "Passwords"],
         severity: "High"
       }
     ];
