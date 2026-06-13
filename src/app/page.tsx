@@ -41,7 +41,11 @@ import {
   Camera,
   MapPin,
   Globe,
-  Edit2
+  Edit2,
+  Fingerprint,
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw
 } from "lucide-react";
 
 // Custom Interface for Inline Icons that accept a size prop
@@ -388,7 +392,7 @@ const initialRelationships = [
 export default function Page() {
   // Navigation & View State
   const [viewMode, setViewMode] = useState<"landing" | "dashboard">("landing");
-  const [activeTab, setActiveTab] = useState<"log" | "timeline" | "relationships" | "editor">("log");
+  const [activeTab, setActiveTab] = useState<"log" | "timeline" | "relationships" | "editor" | "footprint">("log");
   
   // Audio Synthesizer State
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -407,6 +411,13 @@ export default function Page() {
   const [relStatus, setRelStatus] = useState("Active");
   const [relImpact, setRelImpact] = useState<number>(3);
   const [relSubmitLoading, setRelSubmitLoading] = useState(false);
+  
+  // Footprint Self-Audit States
+  const [footprintData, setFootprintData] = useState<any>(null);
+  const [footprintLoading, setFootprintLoading] = useState(false);
+  const [footprintError, setFootprintError] = useState<string | null>(null);
+  const [testIpInput, setTestIpInput] = useState("");
+  const [testEmailInput, setTestEmailInput] = useState("");
   
   // Character Metrics (Reactive to Commits)
   const [stats, setStats] = useState({
@@ -863,6 +874,47 @@ export default function Page() {
       setProfileError(err.message || "Failed to update profile core.");
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  // Trigger Digital Footprint Proxy Audit
+  const triggerFootprintAudit = async (customIp?: string, customEmail?: string) => {
+    if (soundEnabled && synthRef.current) synthRef.current.playClick("enter");
+    setFootprintLoading(true);
+    setFootprintError(null);
+    try {
+      let url = "/api/footprint";
+      const params = new URLSearchParams();
+      if (customIp) params.append("testIp", customIp);
+      if (customEmail) params.append("email", customEmail);
+      
+      const queryString = params.toString();
+      if (queryString) {
+        url += `?${queryString}`;
+      }
+
+      const res = await fetch(url);
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to fetch footprint data");
+      }
+      
+      setFootprintData(data);
+      
+      if (data.breaches && data.breaches.totalLeaks > 0 && user) {
+        setStats(prev => ({
+          ...prev,
+          happiness: Math.max(20, prev.happiness - 5),
+          discipline: Math.min(100, prev.discipline + 4),
+          emotional_stability: Math.max(30, prev.emotional_stability - 3)
+        }));
+      }
+    } catch (err: any) {
+      console.error(err);
+      setFootprintError(err.message || "An unexpected error occurred");
+    } finally {
+      setFootprintLoading(false);
     }
   };
 
@@ -1932,6 +1984,23 @@ export default function Page() {
                   <BookOpen size={12} />
                   <span>[ 04_commit ]</span>
                 </button>
+
+                <button
+                  onClick={() => {
+                    setActiveTab("footprint");
+                    if (!footprintData && !footprintLoading) {
+                      triggerFootprintAudit();
+                    }
+                  }}
+                  className={`flex items-center space-x-2 px-4 py-2.5 rounded-xs transition-all w-full md:w-auto justify-center ${
+                    activeTab === "footprint" 
+                      ? "bg-elevated-surface text-loss-crimson border border-white/5" 
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  <Fingerprint size={12} />
+                  <span>[ 05_audit ]</span>
+                </button>
               </div>
             </div>
 
@@ -2573,6 +2642,255 @@ export default function Page() {
                       </button>
                     </div>
                   </form>
+                </div>
+              )}
+
+              {/* ======================================================== */}
+              {/* TAB 05: DIGITAL FOOTPRINT & GEOLOCATION AUDIT            */}
+              {/* ======================================================== */}
+              {activeTab === "footprint" && (
+                <div className="space-y-6 animate-fade-in text-left">
+                  <div className="flex justify-between items-center border-b border-white/[0.03] pb-3">
+                    <span className="font-mono text-xs text-text-muted uppercase tracking-wider">
+                      $ security-audit --network-intelligence --data-breaches
+                    </span>
+                    <span className="font-mono text-[9px] text-loss-crimson flex items-center bg-loss-crimson/5 border border-loss-crimson/10 px-2 py-0.5 rounded-xs">
+                      <Shield size={10} className="mr-1.5" />
+                      PRIVACY-SHIELD: ACTIVE
+                    </span>
+                  </div>
+
+                  {/* Audit Input Control Panel */}
+                  <div className="glass-panel p-5 rounded-sm border border-white/5 space-y-4">
+                    <h3 className="font-serif text-lg text-text-primary">Custom Consensual Audit Parameters</h3>
+                    <p className="text-xs text-text-secondary font-sans font-light leading-relaxed">
+                      Simulate network intelligence and data breach records for a specific IP or Email. Leave fields blank to audit your current request details.
+                    </p>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-mono text-xs">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                          Test IP Address
+                        </label>
+                        <input
+                          type="text"
+                          value={testIpInput}
+                          onChange={(e) => setTestIpInput(e.target.value)}
+                          placeholder="e.g. 8.8.8.8 (Leave blank for actual)"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-loss-crimson focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-text-muted uppercase tracking-widest block">
+                          Test Email Address
+                        </label>
+                        <input
+                          type="email"
+                          value={testEmailInput}
+                          onChange={(e) => setTestEmailInput(e.target.value)}
+                          placeholder="e.g. Mdskx4@gmail.com"
+                          className="w-full bg-deep-archive/60 border border-white/10 rounded-xs px-3 py-2.5 focus:border-loss-crimson focus:outline-none text-text-primary placeholder-text-disabled transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end pt-2">
+                      <button
+                        onClick={() => triggerFootprintAudit(testIpInput, testEmailInput)}
+                        disabled={footprintLoading}
+                        className="glow-btn px-6 py-2.5 bg-loss-crimson text-white rounded-xs font-mono text-xs tracking-wider uppercase flex items-center space-x-2 hover:bg-loss-crimson/90 transition-all cursor-pointer font-bold disabled:opacity-50"
+                      >
+                        {footprintLoading ? (
+                          <>
+                            <RefreshCw size={12} className="animate-spin" />
+                            <span>ANALYZING FOOTPRINT...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Fingerprint size={12} />
+                            <span>RUN SECURITY AUDIT</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {footprintError && (
+                    <div className="p-4 rounded-xs border border-loss-crimson/20 bg-loss-crimson/5 text-loss-crimson text-xs font-mono flex items-start space-x-2">
+                      <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                      <span>{footprintError}</span>
+                    </div>
+                  )}
+
+                  {/* Audit Results Visualization */}
+                  {footprintData && (
+                    <div className="space-y-6">
+                      
+                      {/* Overall Security Rating Header */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="glass-card p-5 rounded-sm flex items-center space-x-4 border border-white/5">
+                          <div className={`p-3 rounded-full ${
+                            footprintData.breaches.totalLeaks > 0
+                              ? "bg-loss-crimson/10 text-loss-crimson"
+                              : "bg-growth/10 text-growth"
+                          }`}>
+                            {footprintData.breaches.totalLeaks > 0 ? <AlertTriangle size={20} /> : <CheckCircle size={20} />}
+                          </div>
+                          <div>
+                            <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest block">SYSTEM RISK INDEX</span>
+                            <span className={`font-serif text-lg font-bold block ${
+                              footprintData.breaches.totalLeaks > 2
+                                ? "text-loss-crimson"
+                                : footprintData.breaches.totalLeaks > 0
+                                ? "text-memory-gold"
+                                : "text-growth"
+                            }`}>
+                              {footprintData.breaches.totalLeaks > 2 
+                                ? "HIGH VULNERABILITY" 
+                                : footprintData.breaches.totalLeaks > 0 
+                                ? "MODERATE EXPOSURE" 
+                                : "SECURE PROFILE"
+                              }
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="glass-card p-5 rounded-sm flex items-center space-x-4 border border-white/5">
+                          <div className="p-3 rounded-full bg-reflection-blue/10 text-reflection-blue">
+                            <Globe size={20} />
+                          </div>
+                          <div>
+                            <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest block">AUDITED IP IDENTIFIER</span>
+                            <span className="font-mono text-xs text-text-primary font-bold block truncate max-w-[150px]">
+                              {footprintData.ip || "Unknown"}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="glass-card p-5 rounded-sm flex items-center space-x-4 border border-white/5">
+                          <div className="p-3 rounded-full bg-connection-purple/10 text-connection-purple">
+                            <Activity size={20} />
+                          </div>
+                          <div>
+                            <span className="font-mono text-[9px] text-text-muted uppercase tracking-widest block">TOTAL BREACH RECORDS</span>
+                            <span className="font-mono text-lg font-bold block text-text-primary">
+                              {footprintData.breaches.totalLeaks} Leaks
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Geolocational Intelligence Panel */}
+                      <div className="glass-panel p-6 rounded-sm border border-white/5 space-y-4">
+                        <div className="flex items-center space-x-2 border-b border-white/[0.03] pb-3">
+                          <MapPin size={16} className="text-reflection-blue" />
+                          <h4 className="font-serif text-base text-text-primary">Network & Geolocational Intelligence</h4>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 font-mono text-xs">
+                          <div className="space-y-3">
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">Country Code</span>
+                              <span className="text-text-primary">{footprintData.geoloc.countryCode || "N/A"}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">Country / Region</span>
+                              <span className="text-text-primary">{footprintData.geoloc.country || "N/A"} ({footprintData.geoloc.regionName || "N/A"})</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">City / Postal</span>
+                              <span className="text-text-primary">{footprintData.geoloc.city || "N/A"} ({footprintData.geoloc.zip || "N/A"})</span>
+                            </div>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">Network ISP</span>
+                              <span className="text-text-primary truncate max-w-[200px]" title={footprintData.geoloc.isp}>{footprintData.geoloc.isp || "N/A"}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">Organization</span>
+                              <span className="text-text-primary truncate max-w-[200px]" title={footprintData.geoloc.org}>{footprintData.geoloc.org || "N/A"}</span>
+                            </div>
+                            <div className="flex justify-between border-b border-white/[0.02] pb-1.5">
+                              <span className="text-text-secondary">Coordinates (Lat, Lon)</span>
+                              <span className="text-text-primary">{footprintData.geoloc.lat !== undefined ? `${footprintData.geoloc.lat}, ${footprintData.geoloc.lon}` : "N/A"}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {footprintData.geoloc.timezone && (
+                          <div className="bg-white/[0.01] p-3 rounded-xs border border-white/[0.03] text-center font-mono text-[10px] text-text-secondary">
+                            TIMEZONE IDENTIFIER: <span className="text-text-primary">{footprintData.geoloc.timezone}</span> | SYSTEM STATUS: <span className="text-growth">CONNECTED</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Data Breach Intelligence Panel */}
+                      <div className="glass-panel p-6 rounded-sm border border-white/5 space-y-4">
+                        <div className="flex items-center space-x-2 border-b border-white/[0.03] pb-3">
+                          <Database size={16} className="text-loss-crimson" />
+                          <h4 className="font-serif text-base text-text-primary">Data Breach Intelligence Records</h4>
+                        </div>
+
+                        <div className="font-mono text-xs text-text-muted">
+                          AUDITING IDENTITY: <span className="text-text-primary font-bold">{footprintData.breaches.emailAudited}</span>
+                        </div>
+
+                        {footprintData.breaches.totalLeaks === 0 ? (
+                          <div className="py-8 text-center bg-growth/[0.02] rounded-xs border border-growth/15 p-6 space-y-2">
+                            <CheckCircle size={24} className="text-growth mx-auto" />
+                            <span className="font-serif italic text-base text-growth block">"Identity shield intact."</span>
+                            <p className="text-xs text-text-secondary max-w-md mx-auto leading-relaxed">
+                              No leaks or compromised passwords associated with this email were detected in our intelligence feeds. Keep security hygiene standards active.
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {footprintData.breaches.leaks.map((leak: any, idx: number) => (
+                              <div key={idx} className="glass-card p-5 rounded-sm border border-white/5 space-y-3 relative overflow-hidden">
+                                {/* Side indicators based on severity */}
+                                <div className={`absolute top-0 left-0 bottom-0 w-1 ${
+                                  leak.severity === "High" ? "bg-loss-crimson" : "bg-memory-gold"
+                                }`} />
+
+                                <div className="flex justify-between items-start flex-wrap gap-2 pl-2">
+                                  <div>
+                                    <h5 className="font-serif text-base text-text-primary font-bold">{leak.name}</h5>
+                                    <span className="font-mono text-[10px] text-text-disabled uppercase">BREACH DATE: {leak.date || "Unknown"}</span>
+                                  </div>
+                                  <span className={`font-mono text-[9px] border px-2 py-0.5 rounded-xs ${
+                                    leak.severity === "High" 
+                                      ? "text-loss-crimson border-loss-crimson/20 bg-loss-crimson/5 font-bold" 
+                                      : "text-memory-gold border-memory-gold/20 bg-memory-gold/5"
+                                  }`}>
+                                    {leak.severity.toUpperCase()} SEVERITY
+                                  </span>
+                                </div>
+
+                                <p className="text-text-secondary text-xs font-light leading-relaxed pl-2 font-sans">
+                                  {leak.description}
+                                </p>
+
+                                <div className="pl-2 pt-2 border-t border-white/[0.02] flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 font-mono text-[10px]">
+                                  <div>
+                                    <span className="text-text-muted">EXPOSED ATTRIBUTES:</span>{" "}
+                                    <span className="text-text-primary">{leak.dataClasses.join(", ")}</span>
+                                  </div>
+                                  <div className="flex items-center space-x-1 text-growth bg-growth/5 border border-growth/10 px-2 py-0.5 rounded-xs">
+                                    <Lock size={10} />
+                                    <span>ACTION: CHANGE PASSWORD</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                    </div>
+                  )}
                 </div>
               )}
 

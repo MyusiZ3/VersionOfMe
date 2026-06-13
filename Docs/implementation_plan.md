@@ -167,10 +167,40 @@ gantt
 
 ---
 
-## 🚀 5. Langkah Selanjutnya
+## 🔒 5. Secure Backend Proxying & Digital Footprint Integration (Self-Audit)
+
+Untuk mengintegrasikan mekanisme digital intelligence (OSINT) yang diuji dari platform seperti Phonex.id secara aman, proyek ini menerapkan pola **Backend Proxying** melalui Next.js API Routes (Serverless Functions). 
+
+> [!IMPORTANT]
+> **Kebijakan Keamanan & Privasi**: Fitur pelacakan non-konsensual, stealth tracking, atau penangkapan kamera tanpa persetujuan (seperti konsep Tango Snapshot) secara eksplisit **ditiadakan** karena melanggar hak privasi dan keamanan digital. Seluruh integrasi intelijen difokuskan secara eksklusif untuk **self-audit digital footprint** (pemantauan keamanan diri sendiri secara konsensual).
+
+### Arsitektur Aliran Data (Backend Proxying)
+```mermaid
+sequenceDiagram
+    participant Client as Next.js Client (Browser)
+    participant Proxy as Next.js API Route (/api/footprint)
+    participant DB as Supabase DB
+    participant API as Third-Party API (e.g., Leak Check, Geolocation)
+
+    Client->>Proxy: Request Footprint Audit (Self)
+    Note over Proxy: Memvalidasi sesi auth pengguna & menyembunyikan API Key
+    Proxy->>API: Query with Private API Key
+    API-->>Proxy: Return Intelligence Data
+    Proxy->>DB: Log Audit Stats (Optional, with RLS)
+    Proxy-->>Client: Return Sanitized Data (No API Keys leaked)
+```
+
+### Modul Fitur Self-Audit yang Direncanakan
+1.  **Email Breach Checker Proxy**: Mengintegrasikan API pemeriksaan kebocoran data (seperti HaveIBeenPwned) melalui proxy backend untuk mendeteksi apakah email pengguna tereskpos dalam insiden kebocoran data historis. Hasilnya memengaruhi statistik `emotional_stability` atau `discipline` di dashboard.
+2.  **Consensual IP & Geolocation Metadata**: Menggunakan API geolokasi jaringan server-side untuk mendeteksi metadata koneksi pengguna saat ini (negara, ISP, koordinat kota kasar) untuk secara otomatis menandai lokasi fisik pada *life commit* mereka (mirip penandaan geolokasi buku harian tradisional).
+3.  **Consensual Browser Geolocation API**: Menggunakan API browser standar `navigator.geolocation` yang menampilkan dialog izin resmi sebelum memperoleh koordinat persisi untuk fitur *journal mapping*.
+
+---
+
+## 🚀 6. Langkah Selanjutnya
 
 Untuk memulai pengembangan secara konkret, langkah pertama yang perlu kita jalankan adalah:
 1.  **Inisialisasi Project Next.js** di dalam folder root ini.
 2.  **Instalasi Dependencies Utama** (`sass`, `gsap`, `@studio-freight/lenis`, `@supabase/supabase-js`, `framer-motion`).
+3.  **Implementasi API Route Proxy Pertama** di `/src/app/api/footprint/route.ts` untuk mempraktikkan arsitektur backend proxying yang aman.
 
-*Apakah Anda setuju dengan skema database dan rencana implementasi di atas? Jika ya, kita akan langsung melakukan inisialisasi Next.js sekarang!*
