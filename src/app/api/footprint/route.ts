@@ -163,7 +163,7 @@ export async function GET(request: NextRequest) {
       breaches: {
         emailAudited: emailToCheck,
         totalLeaks: leaksFound.length,
-        details: leaksFound
+        leaks: leaksFound
       }
     });
 
