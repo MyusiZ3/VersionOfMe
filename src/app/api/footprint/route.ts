@@ -38,18 +38,26 @@ export async function GET(request: NextRequest) {
 
     // 4. Server-side request delegation (Backend Proxying)
     // Query a geolocation provider on the server side to protect user browser metadata
-    let geoData = {
+    let geoData: any = {
       status: "fail",
       message: "Local or private IP address range",
       query: ip,
       country: "Unknown",
+      countryCode: "N/A",
+      regionName: "N/A",
       city: "Localhost",
-      isp: "Local Loopback Network"
+      zip: "N/A",
+      isp: "Local Loopback Network",
+      org: "N/A",
+      lat: 0.0,
+      lon: 0.0,
+      timezone: "UTC"
     };
 
     if (!isLocalIp(ip)) {
       try {
-        const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,city,isp,query`, {
+        const fields = "status,message,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,org,query";
+        const geoRes = await fetch(`http://ip-api.com/json/${ip}?fields=${fields}`, {
           next: { revalidate: 3600 } // cache for 1 hour
         });
         if (geoRes.ok) {
@@ -140,12 +148,20 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
       email: emailToCheck,
       ip: geoData.query,
-      location: {
-        country: geoData.country,
-        city: geoData.city,
-        isp: geoData.isp
+      geoloc: {
+        countryCode: geoData.countryCode || "N/A",
+        country: geoData.country || "Unknown",
+        regionName: geoData.regionName || "N/A",
+        city: geoData.city || "Localhost",
+        zip: geoData.zip || "N/A",
+        isp: geoData.isp || "Local Loopback Network",
+        org: geoData.org || "N/A",
+        lat: geoData.lat,
+        lon: geoData.lon,
+        timezone: geoData.timezone || ""
       },
       breaches: {
+        emailAudited: emailToCheck,
         totalLeaks: leaksFound.length,
         details: leaksFound
       }
